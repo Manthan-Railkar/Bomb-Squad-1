@@ -2,8 +2,9 @@ import { describe, expect, it } from '@jest/globals';
 /**
  * Unit tests for role-scoped token minting (Story 3.1, AR16: pure logic, zero
  * infra). We decode the JWT's claims and assert the embedded video grant — we
- * never assert the opaque token string. The spectator `canPublish: false`
- * invariant is the security core of FR39 and is asserted explicitly.
+ * never assert the opaque token string. Post-3.7 the lounge is bidirectional
+ * among members; the FR39 boundary ("never publish INTO a Bomb Room") is
+ * structural, so spectator/resting lounge tokens carry `canPublish: true`.
  */
 import {
   mintVoiceToken,
@@ -61,14 +62,16 @@ describe('resolveVoiceScope', () => {
     expect(room).toBe('bomb-room:sess1:B');
   });
 
-  it('scopes a spectator to the listen-only Spectator Lounge (canPublish false)', () => {
+  it('scopes a spectator to the Spectator Lounge WITH publish (bidirectional lounge, Story 3.7)', () => {
     const { room, grant } = resolveVoiceScope({
       identity: 'p3',
       role: 'spectator',
       sessionId: 'sess1',
     });
     expect(room).toBe('spectator-lounge:sess1');
-    expect(grant.canPublish).toBe(false);
+    // Post-3.7 the lounge is bidirectional among members — the one-way boundary
+    // is structural (no lounge member is in a Bomb Room), not a canPublish:false.
+    expect(grant.canPublish).toBe(true);
     expect(grant.canSubscribe).toBe(true);
   });
 
@@ -147,13 +150,36 @@ describe('resolveVoiceScope', () => {
     expect(room).toBe('lobby:sess1');
   });
 
-  it('the SAME spectator outside the lobby reverts to the listen-only lounge (path unchanged)', () => {
+  it('the SAME spectator moves lobby → lounge outside the lobby (both publish post-3.7)', () => {
     const lobby = resolveVoiceScope({ identity: 'p3', role: 'spectator', sessionId: 'sess1', phase: 'lobby' });
     const active = resolveVoiceScope({ identity: 'p3', role: 'spectator', sessionId: 'sess1', phase: 'active' });
     expect(lobby.room).toBe('lobby:sess1');
     expect(lobby.grant.canPublish).toBe(true);
     expect(active.room).toBe('spectator-lounge:sess1');
-    expect(active.grant.canPublish).toBe(false);
+    expect(active.grant.canPublish).toBe(true); // bidirectional lounge (Story 3.7)
+  });
+
+  // ── Relay-aware resting-team routing (Story 3.7) ───────────────────────────
+  it('routes a RESTING team defuser to the lounge, keeps the ACTIVE team in its Bomb Room', () => {
+    const resting = resolveVoiceScope({
+      identity: 'p-rest',
+      role: 'defuser',
+      sessionId: 'sess1',
+      teamId: 'B',
+      phase: 'active',
+      activeTeamId: 'A',
+    });
+    const activeTeam = resolveVoiceScope({
+      identity: 'p-act',
+      role: 'defuser',
+      sessionId: 'sess1',
+      teamId: 'A',
+      phase: 'active',
+      activeTeamId: 'A',
+    });
+    expect(resting.room).toBe('spectator-lounge:sess1');
+    expect(resting.grant.canPublish).toBe(true);
+    expect(activeTeam.room).toBe('bomb-room:sess1:A');
   });
 });
 
@@ -176,7 +202,7 @@ describe('mintVoiceToken', () => {
     expect(claims.video?.canSubscribe).toBe(true);
   });
 
-  it('mints a spectator JWT with canPublish:false (the FR39 security invariant)', async () => {
+  it('mints a spectator JWT scoped to the lounge WITH publish (bidirectional lounge, Story 3.7)', async () => {
     const { token, room } = await mintVoiceToken(
       { identity: 'spec-1', role: 'spectator', sessionId: 'sess9' },
       CREDS,
@@ -185,7 +211,10 @@ describe('mintVoiceToken', () => {
 
     const claims = decodeJwt(token);
     expect(claims.video?.room).toBe('spectator-lounge:sess9');
-    expect(claims.video?.canPublish).toBe(false);
+    // The one-way boundary is structural (a spectator is never in a Bomb Room),
+    // so publishing in the lounge is safe — the FR39 "listen-only" rule means
+    // "never INTO a Bomb Room", not "never publish" (Story 3.7).
+    expect(claims.video?.canPublish).toBe(true);
     expect(claims.video?.canSubscribe).toBe(true);
   });
 

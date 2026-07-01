@@ -1024,15 +1024,25 @@ describe('PREPARATION_OPEN handler', () => {
   let store: MemoryRedisStore;
   let facilitator: TestClientSocket;
   let joiner: TestClientSocket;
+  // Story 3.7: record bridge calls so a test can assert the newly-active team's
+  // Bomb Room is bridged into the lounge when preparation opens.
+  let bridgeCalls: Array<{ sessionId: string; activeTeamId: TeamId }>;
 
   beforeEach(async () => {
     store = createMemoryRedisStore();
+    bridgeCalls = [];
     server = await startTestSocketServer((io) =>
       registerSessionHandlers(io, {
         redis: store,
         log: noopLog,
         timer: createTestScheduler({ redis: store, io, log: noopLog }),
         archive: fakeArchive,
+        loungeBridge: {
+          bridgeActiveTeam: async (sessionId: string, activeTeamId: TeamId) => {
+            bridgeCalls.push({ sessionId, activeTeamId });
+          },
+          unbridgeAll: async () => undefined,
+        },
       }),
     );
     facilitator = await server.connectClient();
@@ -1102,6 +1112,19 @@ describe('PREPARATION_OPEN handler', () => {
     const stored = JSON.parse(store.data.get(sessionKey(ack.sessionId))!) as SessionState;
     expect(stored.status).toBe('preparation');
     expect(stored.roundNumber).toBe(1);
+  });
+
+  it('Story 3.7: opening preparation bridges the newly-active team into the lounge', async () => {
+    const ack = await sessionWithTeam();
+
+    const facStatePromise = nextEvent<SessionState>(facilitator, 'SESSION_STATE');
+    const joinerStatePromise = nextEvent<SessionState>(joiner, 'SESSION_STATE');
+    facilitator.emit('PREPARATION_OPEN');
+    const [facState] = await Promise.all([facStatePromise, joinerStatePromise]);
+
+    // Round 1 → Team A is active (snake first turn) → its Bomb Room is bridged.
+    expect(facState.activeTeamId).toBe('A');
+    expect(bridgeCalls).toEqual([{ sessionId: ack.sessionId, activeTeamId: 'A' }]);
   });
 
   it('non-facilitator → NOT_FACILITATOR, no broadcast, store byte-identical', async () => {

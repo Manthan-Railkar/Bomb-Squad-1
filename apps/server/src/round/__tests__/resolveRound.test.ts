@@ -322,6 +322,33 @@ describe('resolveRound — honest elapsed reconciliation (AC-5)', () => {
   });
 });
 
+describe('resolveRound — lounge bridge teardown (Story 3.7)', () => {
+  it('unbridges the session when the round resolves INTO between-rounds', async () => {
+    const h = await makeHarness();
+    const unbridged: string[] = [];
+    h.deps.loungeBridge = {
+      unbridgeAll: async (sessionId: string) => {
+        unbridged.push(sessionId);
+      },
+    };
+    // Single team → this resolution is the last → between-rounds entry fires.
+    await resolveRound(h.deps, SID, 'A', 'defused', 60_000);
+    expect(unbridged).toEqual([SID]);
+  });
+
+  it('a throwing unbridge is swallowed — the resolution still completes (best-effort, AC #5)', async () => {
+    const h = await makeHarness();
+    h.deps.loungeBridge = {
+      unbridgeAll: async () => {
+        throw new Error('livekit down');
+      },
+    };
+    await expect(resolveRound(h.deps, SID, 'A', 'defused', 60_000)).resolves.toBeUndefined();
+    // The between-rounds broadcast still happened despite the bridge failure.
+    expect((await loadSession(h))!.status).toBe('between-rounds');
+  });
+});
+
 describe('resolveRound — concurrent two-team resolution (shared-session lost-update guard)', () => {
   it('records BOTH teams cumulativeTimeMs when they resolve concurrently — no clobber', async () => {
     // Both teams share one sessionKey. Without per-session serialization, both

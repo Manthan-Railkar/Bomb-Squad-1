@@ -104,6 +104,19 @@ export interface SessionHandlerDeps {
    * cancels the removal, so role/team/relayOrder survive (AC 4). A genuine leave
    * frees the slot after it elapses (AC 3). Default {@link DEFAULT_DISCONNECT_GRACE_MS}. */
   disconnectGraceMs?: number;
+  /** Bomb Room → Lounge audio bridge (Story 3.7). Optional + best-effort: when
+   * present, the round-open handler forwards the active team's Bomb Room audio
+   * into the lounge and the resolve/end handlers tear it down. Absent (many tests)
+   * ⇒ no bridging, and the game is entirely unaffected — voice never gates state. */
+  loungeBridge?: LoungeBridgePort;
+}
+
+/** The narrow slice of {@link LoungeBridge} the session handlers drive. Declared
+ * structurally so the handler module does not import the concrete LiveKit adapter
+ * (keeps it out of the reducer-adjacent unit-test graph). */
+export interface LoungeBridgePort {
+  bridgeActiveTeam(sessionId: string, activeTeamId: TeamId): Promise<void>;
+  unbridgeAll(sessionId: string): Promise<void>;
 }
 
 /** Default lobby disconnect grace — long enough for a page refresh round-trip,
@@ -1098,6 +1111,17 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
         await deps.redis.setJSON(sessionKey(sessionId), next);
         io.to(sessionRoom(sessionId)).emit('SESSION_STATE', next);
         deps.log.info({ sessionId, roundNumber: next.roundNumber }, 'preparation opened');
+
+        // Story 3.7: bridge the newly-active team's Bomb Room audio into the lounge
+        // so spectators + the resting team hear the live round. Best-effort, AFTER
+        // the authoritative emit — a LiveKit failure must never block the round
+        // opening (AC #5). This is the initial sweep of whoever is already
+        // connected; the LiveKit `participant_joined` webhook forwards anyone who
+        // (re)connects later in the round. The prior round's forward was already
+        // torn down at its resolve, so no unbridge is needed here.
+        if (next.activeTeamId !== undefined) {
+          void deps.loungeBridge?.bridgeActiveTeam(sessionId, next.activeTeamId).catch(() => undefined);
+        }
       } catch (err) {
         deps.log.error({ err, socketId: socket.id }, 'PREPARATION_OPEN failed');
         socket.emit('ERROR', {
@@ -1204,6 +1228,11 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
           { sessionId, winnerTeamId: finalScoreboard.winnerTeamId ?? null, roundCount: record.roundCount },
           'session ended + archived',
         );
+
+        // Story 3.7 (AC #6): the session is over — tear down any remaining lounge
+        // forward. Best-effort, after the emit. Normally the final round's resolve
+        // already unbridged; this is belt-and-suspenders for a clean end.
+        void deps.loungeBridge?.unbridgeAll(sessionId).catch(() => undefined);
       } catch (err) {
         deps.log.error({ err, socketId: socket.id }, 'SESSION_END failed');
         socket.emit('ERROR', {

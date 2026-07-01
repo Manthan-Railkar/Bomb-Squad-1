@@ -38,7 +38,9 @@ export function useVoiceScopeSync(
   const publishing = useVoiceStore((s) => s.publishing);
 
   const self = selfId !== null ? session?.players[selfId] : undefined;
-  const desired = deriveDesiredScope(self, session?.status, session?.sessionId);
+  // Story 3.7: pass the active team so a resting Bomb-Room participant resolves to
+  // the Lounge — the turn flip changes `desired.room`, which re-mints them there.
+  const desired = deriveDesiredScope(self, session?.status, session?.sessionId, session?.activeTeamId);
 
   // The desired scope we last initiated an `unavailable` re-mint toward, so a
   // failing re-mint (unavailable → idle → connecting → unavailable) does not

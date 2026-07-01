@@ -1,39 +1,32 @@
-import { useGameStore } from '../store/gameStore.js';
 import { useVoiceStore } from '../store/voiceStore.js';
 import { setVoiceMuted } from '../voice/connectVoice.js';
 import { MUTE_SELF, UNMUTE_SELF, MUTED_STATUS } from './copy.js';
 
 /**
- * Self-mute control (Story 3.4) — a bottom-left, gesture-driven toggle for a Bomb
- * Room publisher's own mic. Rendering-only: all toggle logic lives in
- * `voice/connectVoice.ts` (`setVoiceMuted`), the flag in `voiceStore.muted`. The
- * component just drives the toggle from a click and reflects the flag in its own
- * glyph — a normal mic un-muted, a strike-through mic in `voice-muted` when muted
- * (AC #3's "the control's own visual shows the muted state").
+ * Self-mute control (Story 3.4, generalised by 3.7) — a bottom-left,
+ * gesture-driven toggle for the local publisher's own mic. Rendering-only: all
+ * toggle logic lives in `voice/connectVoice.ts` (`setVoiceMuted`), the flag in
+ * `voiceStore.muted`. The component just drives the toggle from a click and
+ * reflects the flag in its own glyph — a normal mic un-muted, a strike-through
+ * mic in `voice-muted` when muted (AC #3's "the control's own visual shows the
+ * muted state").
  *
- * Render gating (AC #4): show ONLY for a self who is a connected Bomb Room
- * **publisher**. Self is resolved the durable way (`myPlayerId` → the roster keyed
- * by durable id since Story 2.7, NOT `getSocket().id`); a publisher is a
- * Defuser/Expert with a team — mirrors `VoiceController`'s Bomb Room gate. A
- * listen-only spectator (`publish: false`, no mic) renders nothing here, and so
- * does any non-`connected` state (there's no live mic to toggle). `setVoiceMuted`
- * is itself a no-op for a non-publisher — belt-and-suspenders with this gate.
+ * Render gating (AC #4): show ONLY when the local connection is actually
+ * PUBLISHING a mic — `voiceStore.publishing` is the authoritative signal
+ * (whatever room they're in). Pre-3.7 that meant only a Bomb Room seat; post-3.7
+ * the lounge is bidirectional, so a spectator / resting-team player in the lounge
+ * publishes too and gets the same control. A listen-only connection (`publishing:
+ * false`) and any non-`connected` state render nothing (no live mic to toggle).
+ * `setVoiceMuted` is itself a no-op for a non-publisher — belt-and-suspenders.
  */
 export default function MuteControl() {
-  const session = useGameStore((s) => s.session);
-  const selfId = useGameStore((s) => s.myPlayerId);
   const status = useVoiceStore((s) => s.status);
+  const publishing = useVoiceStore((s) => s.publishing);
   const muted = useVoiceStore((s) => s.muted);
 
-  // Only a connected Bomb Room publisher gets a mute control. Resolve self via the
-  // durable id (Story 2.7), then gate on the same role/team rule VoiceController
-  // uses to decide it publishes the mic.
-  const self = selfId !== null ? session?.players[selfId] : undefined;
-  const isBombRoomPublisher =
-    self !== undefined &&
-    (self.role === 'defuser' || self.role === 'expert') &&
-    self.teamId !== undefined;
-  if (!isBombRoomPublisher || status !== 'connected') return null;
+  // Gate on the authoritative "I have a live mic" flag, not the role — this now
+  // covers every publisher (active Bomb Room seat AND bidirectional-lounge member).
+  if (!publishing || status !== 'connected') return null;
 
   const label = muted ? UNMUTE_SELF : MUTE_SELF;
 

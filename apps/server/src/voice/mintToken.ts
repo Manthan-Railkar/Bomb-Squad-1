@@ -39,6 +39,12 @@ export interface VoiceParticipant {
    * {@link resolveVoiceScope}. Absent/other phases keep the role-scoped routing.
    */
   phase?: SessionState['status'];
+  /**
+   * The active team this round (Story 3.7 relay routing). Threaded so a resting
+   * Bomb-Room role (its team is not the active team) mints a Lounge token instead
+   * of its own now-silent Bomb Room token. Absent ⇒ no relay routing.
+   */
+  activeTeamId?: TeamId;
 }
 
 export interface VoiceCredentials {
@@ -62,15 +68,16 @@ export interface ResolvedVoiceScope {
  * `roomJoin: true`. Pure and total over valid inputs; propagates
  * {@link VoiceScopeError} for the one unrepresentable case (a Bomb Room role
  * with no team, outside the lobby). See the shared helper for the full mapping
- * (lobby mic-check exception, spectator listen-only, facilitator narration).
+ * (lobby mic-check exception, bidirectional lounge, relay-aware resting routing).
  */
 export function resolveVoiceScope(participant: VoiceParticipant): ResolvedVoiceScope {
-  const { role, sessionId, teamId, phase } = participant;
+  const { role, sessionId, teamId, phase, activeTeamId } = participant;
   const { room, canPublish, canSubscribe } = resolveSharedVoiceScope({
     role,
     sessionId,
     teamId,
     phase,
+    activeTeamId,
   });
   return {
     room,

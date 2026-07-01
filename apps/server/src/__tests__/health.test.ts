@@ -9,6 +9,7 @@ const validEnv = {
   REDIS_URL: 'redis://localhost:6379',
   DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/bombsquad',
   LIVEKIT_URL: 'ws://localhost:7880',
+  LIVEKIT_SERVER_URL: 'http://livekit:7880',
   LIVEKIT_API_KEY: 'devkey',
   LIVEKIT_API_SECRET: 'devsecret',
   TURN_SECRET: 'changeme',

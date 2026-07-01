@@ -11,6 +11,8 @@ import { registerSessionHandlers, type SessionSocketData } from './handlers/sess
 import { registerManualHandlers } from './handlers/manualHandlers.js';
 import { registerVoiceHandlers } from './handlers/voiceHandlers.js';
 import { registerModuleHandlers } from './handlers/moduleHandlers.js';
+import { LoungeBridge } from './voice/loungeBridge.js';
+import { createLoungeRelayBot } from './voice/loungeRelayBot.js';
 import { createTimerScheduler } from './timer/index.js';
 
 /** A typed Socket.IO server. Generic order is `<ClientToServer, ServerToClient>` (incoming first). */
@@ -94,10 +96,30 @@ async function start(): Promise<void> {
     return { ok, ...(ok ? {} : { detail: 'postgres SELECT 1 failed' }) };
   });
 
+  // Story 3.7: the Bomb Room → Spectator Lounge one-way audio bridge, run by a
+  // per-session `@livekit/rtc-node` relay bot (forwardParticipant is unimplemented
+  // on self-hosted LiveKit — see loungeRelayBot.ts). The bot connects to LiveKit's
+  // ws:// signaling endpoint FROM THE SERVER, so its URL is derived from
+  // LIVEKIT_SERVER_URL (server-reachable) by swapping the http(s) scheme for ws(s)
+  // — distinct from the browser ws://localhost LIVEKIT_URL. Best-effort: a LiveKit
+  // hiccup never blocks a game transition (handlers call it after the authoritative
+  // emit). Constructed BEFORE the timer + handlers so they can drive its teardown
+  // on a round resolving into between-rounds.
+  const loungeBridge = new LoungeBridge(
+    {
+      wsUrl: config.LIVEKIT_SERVER_URL.replace(/^http/, 'ws'),
+      apiKey: config.LIVEKIT_API_KEY,
+      apiSecret: config.LIVEKIT_API_SECRET,
+    },
+    fastify.log,
+    createLoungeRelayBot,
+  );
+
   // Server-authoritative timer scheduler (Story 8.4) — owns the wall clock and
   // the setTimeout-backed expiry wakes. Constructed here (needs the connected
-  // store + the live io) and disposed in shutdown() before io.close().
-  const timerScheduler = createTimerScheduler({ redis: redisStore, io, log: fastify.log });
+  // store + the live io) and disposed in shutdown() before io.close(). Threads the
+  // bridge so a time-expired resolution tears down the lounge forward (Story 3.7).
+  const timerScheduler = createTimerScheduler({ redis: redisStore, io, log: fastify.log, loungeBridge });
 
   // Connection gate: reject Socket.IO handshakes while any store is unhealthy.
   // Per-connection runAll() is acceptable in V1 (infrequent handshakes).
@@ -126,9 +148,21 @@ async function start(): Promise<void> {
   // stays pure construction — handlers need the connected Redis store. The
   // identity middleware inside registerSessionHandlers registers AFTER the
   // readiness gate above (see ORDER MATTERS note).
-  registerSessionHandlers(io, { redis: redisStore, log: fastify.log, timer: timerScheduler, archive });
+  registerSessionHandlers(io, {
+    redis: redisStore,
+    log: fastify.log,
+    timer: timerScheduler,
+    archive,
+    loungeBridge,
+  });
   registerManualHandlers(io, { redis: redisStore, log: fastify.log });
-  registerModuleHandlers(io, { redis: redisStore, log: fastify.log, timer: timerScheduler, archive });
+  registerModuleHandlers(io, {
+    redis: redisStore,
+    log: fastify.log,
+    timer: timerScheduler,
+    archive,
+    loungeBridge,
+  });
   registerVoiceHandlers(io, {
     redis: redisStore,
     log: fastify.log,

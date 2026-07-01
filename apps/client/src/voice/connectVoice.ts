@@ -4,6 +4,7 @@ import type {
   VoiceTokenGrantPayload,
   VoiceTokenErrorPayload,
 } from '@bomb-squad/shared';
+import { isBridgeIdentity } from '@bomb-squad/shared';
 import { getSocket } from '../net/socket.js';
 import { useVoiceStore } from '../store/voiceStore.js';
 
@@ -330,7 +331,12 @@ export function createVoiceController(deps: VoiceControllerDeps) {
     // speaker that drops out is held for SPEAKER_STOP_GRACE_MS before its dot
     // clears (flicker suppression). The dot is the lobby's only green (DESIGN.md).
     onActiveSpeakers = (participants: SpeakingParticipant[]) => {
-      const speaking = new Set(participants.map((p) => p.identity));
+      // Story 3.7: the audio-relay bot republishes the Bomb Room into the lounge
+      // under a `#bridge-*` identity. It is infrastructure, not a player — never
+      // render it as a speaker pill (it would otherwise show as SPEAKER_UNKNOWN).
+      const speaking = new Set(
+        participants.map((p) => p.identity).filter((id) => !isBridgeIdentity(id)),
+      );
       let changed = false;
       // Newly (or still) speaking → light immediately + cancel any pending clear.
       for (const id of speaking) {

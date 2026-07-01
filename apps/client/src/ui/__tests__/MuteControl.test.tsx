@@ -1,77 +1,59 @@
 import { render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PlayerInfo, PlayerRole, TeamId } from '@bomb-squad/shared';
-import { useGameStore } from '../../store/gameStore.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useVoiceStore } from '../../store/voiceStore.js';
 import MuteControl from '../MuteControl.js';
 import { MUTE_SELF, MUTED_STATUS } from '../copy.js';
 
 /**
- * MuteControl render-gating tests (Story 3.4). The control shows ONLY for a
- * connected Bomb Room publisher (Defuser/Expert with a team) and reflects
- * `voiceStore.muted` in its own glyph/label. A spectator (no mic) and any
- * non-`connected` state render nothing. Toggle logic lives in connectVoice
- * (covered there) — here we pin only the role/connection gate + the muted visual.
+ * MuteControl render-gating tests (Story 3.4, generalised by 3.7). The control
+ * shows ONLY when the local connection is publishing a mic
+ * (`voiceStore.publishing` + `connected`) and reflects `voiceStore.muted` in its
+ * own glyph/label. Post-3.7 that includes bidirectional-lounge members, not just
+ * Bomb Room seats. A listen-only connection and any non-`connected` state render
+ * nothing. Toggle logic lives in connectVoice (covered there) — here we pin only
+ * the publish/connection gate + the muted visual.
  */
-function selfPlayer(role: PlayerRole, teamId?: TeamId): PlayerInfo {
-  return { playerId: 'self', displayName: 'Ada', role, teamId, isReady: false };
-}
-
-function seedSelf(role: PlayerRole, teamId?: TeamId) {
-  useGameStore.setState({
-    session: { players: { self: selfPlayer(role, teamId) } } as never,
-    myPlayerId: 'self',
-  });
-}
-
-beforeEach(() => {
-  useVoiceStore.setState({ status: 'connected', muted: false });
-});
-
 afterEach(() => {
   vi.restoreAllMocks();
-  useGameStore.setState({ session: null, myPlayerId: null });
-  useVoiceStore.setState({ status: 'idle', muted: false });
+  useVoiceStore.setState({ status: 'idle', muted: false, publishing: false });
 });
 
 describe('MuteControl', () => {
-  it('shows for a connected Bomb Room publisher (defuser with team)', () => {
-    seedSelf('defuser', 'A');
+  it('shows for a connected publisher (has a live mic)', () => {
+    useVoiceStore.setState({ status: 'connected', muted: false, publishing: true });
+    render(<MuteControl />);
+    expect(screen.getByRole('button', { name: MUTE_SELF })).toBeInTheDocument();
+  });
+
+  it('shows for a bidirectional-lounge publisher too (Story 3.7 — publishing is the gate)', () => {
+    // No role/session seeded at all — the store's publishing flag is authoritative.
+    useVoiceStore.setState({ status: 'connected', muted: false, publishing: true });
     render(<MuteControl />);
     expect(screen.getByRole('button', { name: MUTE_SELF })).toBeInTheDocument();
   });
 
   it('reflects the muted flag: aria-pressed + the muted glyph/label', () => {
-    seedSelf('expert', 'B');
-    useVoiceStore.setState({ status: 'connected', muted: true });
+    useVoiceStore.setState({ status: 'connected', muted: true, publishing: true });
     render(<MuteControl />);
     const btn = screen.getByRole('button');
     expect(btn).toHaveAttribute('aria-pressed', 'true');
-    // The muted state surfaces the Muted status label + a strike-through glyph.
     expect(screen.getByText(MUTED_STATUS)).toBeInTheDocument();
   });
 
   it('un-muted state is not pressed', () => {
-    seedSelf('defuser', 'A');
+    useVoiceStore.setState({ status: 'connected', muted: false, publishing: true });
     render(<MuteControl />);
     expect(screen.getByRole('button')).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('renders nothing for a spectator (no mic to mute)', () => {
-    seedSelf('spectator');
+  it('renders nothing for a listen-only connection (not publishing)', () => {
+    useVoiceStore.setState({ status: 'connected', muted: false, publishing: false });
     const { container } = render(<MuteControl />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it('renders nothing when voice is not connected', () => {
-    seedSelf('defuser', 'A');
-    useVoiceStore.setState({ status: 'connecting', muted: false });
-    const { container } = render(<MuteControl />);
-    expect(container).toBeEmptyDOMElement();
-  });
-
-  it('renders nothing for a defuser without a team (not a Bomb Room seat)', () => {
-    seedSelf('defuser', undefined);
+    useVoiceStore.setState({ status: 'connecting', muted: false, publishing: true });
     const { container } = render(<MuteControl />);
     expect(container).toBeEmptyDOMElement();
   });

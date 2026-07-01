@@ -82,12 +82,15 @@ async function setPlayer(
   sessionId: string,
   playerId: string,
   role: PlayerRole,
-  opts: { teamId?: TeamId; status?: SessionState['status'] } = {},
+  opts: { teamId?: TeamId; status?: SessionState['status']; activeTeamId?: TeamId } = {},
 ): Promise<void> {
   const state = await store.getJSON<SessionState>(sessionKey(sessionId));
   if (state === null) throw new Error('session not found in test store');
   state.players[playerId] = { playerId, displayName: 'tester', role, teamId: opts.teamId, isReady: false };
   if (opts.status !== undefined) state.status = opts.status;
+  // Story 3.7: the active team drives relay-aware resting routing. Set it only
+  // when a test opts in so unrelated tests keep the pre-relay behaviour.
+  if (opts.activeTeamId !== undefined) state.activeTeamId = opts.activeTeamId;
   await store.setJSON(sessionKey(sessionId), state);
 }
 
@@ -168,7 +171,7 @@ describe('VOICE_TOKEN handler', () => {
     expect(res.identity).toBe(playerId);
   });
 
-  it('mints a listen-only Spectator Lounge token (canPublish:false) in a non-lobby phase', async () => {
+  it('mints a Spectator Lounge token WITH publish for a spectator (bidirectional lounge, Story 3.7)', async () => {
     const { sessionId } = await createSession(client);
     const playerId = await facilitatorId(store, sessionId);
     await setPlayer(store, sessionId, playerId, 'spectator', { status: 'active' });
@@ -180,8 +183,49 @@ describe('VOICE_TOKEN handler', () => {
     expect(res.room).toBe(`spectator-lounge:${sessionId}`);
     const claims = decodeJwt(res.token);
     expect(claims.video?.room).toBe(`spectator-lounge:${sessionId}`);
-    expect(claims.video?.canPublish).toBe(false);
+    // Post-3.7 the lounge is bidirectional among members — spectators publish so
+    // they can talk to each other + the resting team. The one-way boundary is
+    // structural (no lounge member is in a Bomb Room), not a canPublish:false.
+    expect(claims.video?.canPublish).toBe(true);
     expect(claims.video?.canSubscribe).toBe(true);
+  });
+
+  // ── Relay-aware resting-team routing (Story 3.7) ───────────────────────────
+
+  it('mints a Bomb Room token for the ACTIVE team defuser during a live round', async () => {
+    const { sessionId } = await createSession(client);
+    const playerId = await facilitatorId(store, sessionId);
+    // teamId A IS the active team → stays in its own Bomb Room.
+    await setPlayer(store, sessionId, playerId, 'defuser', {
+      teamId: 'A',
+      status: 'active',
+      activeTeamId: 'A',
+    });
+
+    const res = await requestVoiceToken(client);
+    expect(isGrant(res)).toBe(true);
+    if (!isGrant(res)) return;
+    expect(res.room).toBe(`bomb-room:${sessionId}:A`);
+    expect(decodeJwt(res.token).video?.canPublish).toBe(true);
+  });
+
+  it('mints a LOUNGE token for a RESTING team defuser during a live round (audience)', async () => {
+    const { sessionId } = await createSession(client);
+    const playerId = await facilitatorId(store, sessionId);
+    // teamId B, active team A → B is resting → routes to the lounge as audience.
+    await setPlayer(store, sessionId, playerId, 'defuser', {
+      teamId: 'B',
+      status: 'active',
+      activeTeamId: 'A',
+    });
+
+    const res = await requestVoiceToken(client);
+    expect(isGrant(res)).toBe(true);
+    if (!isGrant(res)) return;
+    expect(res.room).toBe(`spectator-lounge:${sessionId}`);
+    const claims = decodeJwt(res.token);
+    expect(claims.video?.room).toBe(`spectator-lounge:${sessionId}`);
+    expect(claims.video?.canPublish).toBe(true); // can talk in the lounge
   });
 
   it('mints a Spectator Lounge token with publish for a facilitator in a non-lobby phase', async () => {
@@ -275,7 +319,10 @@ describe('VOICE_TOKEN handler', () => {
     expect(isGrant(res)).toBe(true);
     if (!isGrant(res)) return;
     expect(res.room).toBe(`spectator-lounge:${sessionId}`);
-    expect(decodeJwt(res.token).video?.canPublish).toBe(false);
+    // Server-derived scope wins: a spectator lands in the lounge (bidirectional
+    // publish, Story 3.7), never the bomb-room the client tried to smuggle.
+    expect(decodeJwt(res.token).video?.room).toBe(`spectator-lounge:${sessionId}`);
+    expect(decodeJwt(res.token).video?.canPublish).toBe(true);
   });
 
   // ── Re-mint after a role change (Story 3.5) ────────────────────────────────
@@ -302,13 +349,15 @@ describe('VOICE_TOKEN handler', () => {
     expect(isGrant(second)).toBe(true);
     if (!isGrant(second)) return;
 
-    // New room, listen-only grant — derived from current state, not the prior token.
+    // New room, bidirectional-lounge grant — derived from current state, not the
+    // prior token. Room changed (bomb-room → lounge) even though publish stays
+    // true post-3.7; the room change is what drives the client re-mint.
     expect(second.room).toBe(`spectator-lounge:${sessionId}`);
-    expect(second.canPublish).toBe(false); // ack now carries the authoritative publish right
+    expect(second.canPublish).toBe(true); // ack carries the authoritative publish right
     expect(second.token).not.toBe(first.token);
     const claims = decodeJwt(second.token);
     expect(claims.video?.room).toBe(`spectator-lounge:${sessionId}`);
-    expect(claims.video?.canPublish).toBe(false);
+    expect(claims.video?.canPublish).toBe(true);
     expect(claims.video?.canSubscribe).toBe(true);
   });
 

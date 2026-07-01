@@ -118,6 +118,9 @@ export function registerVoiceHandlers(io: VoiceIOServer, deps: VoiceHandlerDeps)
             // Thread the phase so the lobby mic check scopes everyone to the
             // shared lobby room (Story 2.5); non-lobby keeps role-scoped routing.
             phase: state.status,
+            // Thread the active team (Story 3.7) so a resting Bomb-Room role mints
+            // a Lounge token instead of its own now-silent Bomb Room token.
+            activeTeamId: state.activeTeamId,
           },
           {
             apiKey: deps.config.LIVEKIT_API_KEY,

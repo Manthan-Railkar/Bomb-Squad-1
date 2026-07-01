@@ -1,4 +1,4 @@
-import type { PlayerInfo, SessionState } from '@bomb-squad/shared';
+import type { PlayerInfo, SessionState, TeamId } from '@bomb-squad/shared';
 import { resolveVoiceScope, VoiceScopeError } from '@bomb-squad/shared';
 import type { VoiceStatus } from '../store/voiceStore.js';
 
@@ -45,17 +45,23 @@ const NONE: VoiceAction = { type: 'none' };
  *
  * Scoped DELIBERATELY to the two roles this client's voice UI manages — a Bomb
  * Room participant (defuser/expert with a team) and a Spectator — which is the
- * Bomb-Room↔Lounge boundary the facilitator's `TEAM_ASSIGN` crosses today (the
- * core observable trigger). Other roles (facilitator, un-teamed) resolve to
- * `null` → no auto re-mint; their voice is owned by later stories. The active↔
- * resting Lounge routing for the relay (which keeps Bomb Room roles but rests a
- * team) arrives with Story 3.7 — it changes what scope the server assigns, and
- * this mechanism re-mints for it "for free" once it does.
+ * Bomb-Room↔Lounge boundary the facilitator's `TEAM_ASSIGN` crosses. Other roles
+ * (facilitator, un-teamed) resolve to `null` → no auto re-mint; their voice is
+ * owned by later stories.
+ *
+ * Story 3.7 threads `activeTeamId`: during a live round a Bomb-Room participant
+ * whose team is NOT the active team RESTS and the shared helper now resolves them
+ * to the Lounge. Because a resting player still has a team, the guard below keeps
+ * treating them as a "Bomb Room participant" (managed) — the only difference is
+ * the resolved room, so on the turn flip the desired room changes bomb-room↔
+ * lounge and `computeVoiceAction` re-mints for it (this is the "3.7 rides 3.5 for
+ * free" seam the 3.5 notes anticipated).
  */
 export function deriveDesiredScope(
   self: PlayerInfo | undefined,
   status: SessionState['status'] | undefined,
   sessionId: string | undefined,
+  activeTeamId: TeamId | undefined,
 ): DesiredVoiceScope | null {
   if (self === undefined || sessionId === undefined) return null;
   const isBombRoomParticipant =
@@ -69,6 +75,7 @@ export function deriveDesiredScope(
       sessionId,
       teamId: self.teamId,
       phase: status,
+      activeTeamId,
     });
     return { room: scope.room, publish: scope.canPublish };
   } catch (err) {

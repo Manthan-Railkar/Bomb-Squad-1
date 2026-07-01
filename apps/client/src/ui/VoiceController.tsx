@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { spectatorLoungeName } from '@bomb-squad/shared';
 import { useGameStore } from '../store/gameStore.js';
 import { useVoiceStore } from '../store/voiceStore.js';
 import { connectVoice, disconnectVoice, reconnectVoice } from '../voice/connectVoice.js';
+import { deriveDesiredScope } from '../voice/computeVoiceAction.js';
 import { useVoiceScopeSync } from '../voice/useVoiceScopeSync.js';
 import Button from './Button.js';
 import {
@@ -22,13 +24,16 @@ import {
  * connection logic lives in `voice/connectVoice.ts`; this component just drives
  * it from a click and mirrors `voiceStore` into EXPERIENCE.md microcopy.
  *
- * Two role-gated modes share this one mount (it already rides ActiveRound):
- * - Bomb Room (Story 3.2): a Defuser/Expert with a team connects + PUBLISHES
- *   the mic (`publish: true`) so they can talk. "Connect to Bomb Room voice".
- * - Spectator Lounge (Story 3.3): a spectator connects LISTEN-ONLY
- *   (`publish: false`) — no mic acquired, no mic prompt (AC #2) — and HEARS the
- *   Bomb Room. Lounge microcopy ("Listen to the Bomb Room"); a spectator is not
- *   "in" the Bomb Room.
+ * Two modes share this one mount (it already rides ActiveRound). The mode is
+ * resolved from the player's SERVER-ASSIGNED scope (`deriveDesiredScope` — the
+ * same shared derivation the server mints from), never the raw role, so the
+ * relay's resting team lands in the lounge automatically (Story 3.7):
+ * - Bomb Room (Story 3.2): the ACTIVE team's Defuser/Expert connects + PUBLISHES
+ *   the mic so they can talk. "Connect to Bomb Room voice".
+ * - Spectator Lounge (Story 3.3 / 3.7): a spectator OR a resting-team player
+ *   connects to the lounge. Post-3.7 the lounge is BIDIRECTIONAL among members
+ *   (`publish: true`) — they hear the active team's bomb (forwarded by the server
+ *   bridge) AND can talk to each other. Lounge microcopy.
  *
  * Deliberately NOT here (Story 3.4): the speaker-indicator pill and the
  * self-mute toggle. No pill, no mute control in either mode.
@@ -73,30 +78,30 @@ export default function VoiceController() {
     };
   }, []);
 
-  // Resolve which voice mode this role gets. The client is room-agnostic (it
-  // trusts the token's room); the role only decides whether we publish the mic
-  // and which microcopy to show.
-  // - Bomb Room: a Defuser/Expert resolved to a team → publish + talk (3.2).
-  // - Lounge: a spectator → listen-only, no mic (3.3).
-  // Facilitators and un-teamed players get nothing here (later stories).
+  // Resolve which voice mode this player gets from their SERVER-ASSIGNED scope —
+  // the shared derivation the server mints from — so the client never disagrees
+  // with the token, and the relay's resting-team → lounge routing (3.7) is picked
+  // up here for free. `deriveDesiredScope` returns null for roles this UI does not
+  // manage (facilitator / un-teamed / teamless bomb role) → render nothing.
   const self = selfId !== null ? session?.players[selfId] : undefined;
-  const isBombRoomParticipant =
-    self !== undefined && (self.role === 'defuser' || self.role === 'expert') && self.teamId !== undefined;
-  const isSpectator = self !== undefined && self.role === 'spectator';
-  if (!isBombRoomParticipant && !isSpectator) return null;
+  const desired = deriveDesiredScope(self, session?.status, session?.sessionId, session?.activeTeamId);
+  if (desired === null || session === null) return null;
 
-  // Mode-specific config. Spectator → listen-only (publish: false) + lounge copy.
-  const publish = isBombRoomParticipant;
-  const ctaCopy = isBombRoomParticipant ? VOICE_CONNECT_CTA : VOICE_LOUNGE_CTA;
-  const connectingCopy = isBombRoomParticipant ? VOICE_CONNECTING : VOICE_LOUNGE_CONNECTING;
-  const connectedCopy = isBombRoomParticipant ? VOICE_CONNECTED : VOICE_LOUNGE_CONNECTED;
+  // Microcopy follows the RESOLVED room, not the raw role — a resting Bomb-Room
+  // player shows lounge copy. `publish` is the authoritative grant flag (lounge is
+  // bidirectional post-3.7, so lounge members publish too — they acquire a mic).
+  const inLounge = desired.room === spectatorLoungeName(session.sessionId);
+  const publish = desired.publish;
+  const ctaCopy = inLounge ? VOICE_LOUNGE_CTA : VOICE_CONNECT_CTA;
+  const connectingCopy = inLounge ? VOICE_LOUNGE_CONNECTING : VOICE_CONNECTING;
+  const connectedCopy = inLounge ? VOICE_LOUNGE_CONNECTED : VOICE_CONNECTED;
 
   return (
     <div className="pointer-events-auto absolute bottom-4 right-4 z-10 flex flex-col items-end gap-2">
       {status === 'idle' && (
-        // connectVoice() MUST be invoked from this click — autoplay (and, for the
-        // Bomb Room, getUserMedia) need the user gesture (Task 2 autoplay note).
-        // A spectator connects listen-only: no mic, no prompt (Story 3.3 AC #2).
+        // connectVoice() MUST be invoked from this click — autoplay AND (now that
+        // the lounge is bidirectional, Story 3.7) getUserMedia for every managed
+        // role need the user gesture. Lounge members acquire a mic too.
         <Button variant="secondary" onClick={() => void connectVoice({ publish })}>
           {ctaCopy}
         </Button>

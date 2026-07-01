@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@jest/globals": "^30.4.1",
+    "@livekit/rtc-node": "^0.13.30",
     "@types/jest": "^30.0.0",
     "@types/pg": "^8.20.0",
     "jest": "^30.4.2",

@@ -173,13 +173,15 @@ export const VOICE_DISMISS = 'Dismiss';
 export const VOICE_RECONNECT = 'Reconnect voice';
 export const VOICE_ENABLE_AUDIO = 'Click to enable audio';
 
-// Spectator Lounge listen-only voice (Story 3.3) — a spectator HEARS the Bomb
-// Room but cannot speak into it (EXPERIENCE.md Flow 4), so the copy says
-// "listen", never "connect to"/"in" the Bomb Room. Failure reuses the shared
-// VOICE_UNAVAILABLE + VOICE_DISMISS. No speaker pill, no mute toggle (Story 3.4).
-export const VOICE_LOUNGE_CTA = 'Listen to the Bomb Room';
-export const VOICE_LOUNGE_CONNECTING = 'Connecting to the Bomb Room…';
-export const VOICE_LOUNGE_CONNECTED = 'Listening to the Bomb Room.';
+// Spectator Lounge voice (Story 3.3, extended by 3.7). The lounge is now
+// BIDIRECTIONAL among its members: a spectator or resting-team player HEARS the
+// active team's Bomb Room (forwarded one-way by the server bridge) AND can talk
+// to the others in the lounge — but never INTO the Bomb Room (the boundary is
+// structural). Copy says "lounge", never "connect to"/"in" the Bomb Room. Failure
+// reuses the shared VOICE_UNAVAILABLE + VOICE_DISMISS.
+export const VOICE_LOUNGE_CTA = 'Join the Spectator Lounge';
+export const VOICE_LOUNGE_CONNECTING = 'Connecting to the lounge…';
+export const VOICE_LOUNGE_CONNECTED = 'In the lounge — hearing the Bomb Room.';
 
 // In-round speaker indicator + self-mute (Story 3.4). The pill always shows the
 // name (never icon-only); SPEAKING is reused for its accessible label. The mute

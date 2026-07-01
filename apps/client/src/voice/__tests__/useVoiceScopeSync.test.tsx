@@ -24,10 +24,11 @@ const SID = 'sess1';
 function player(role: PlayerRole, teamId?: TeamId): PlayerInfo {
   return { playerId: 'self', displayName: 'Ada', role, teamId, isReady: false };
 }
-function session(role: PlayerRole, teamId?: TeamId): SessionState {
+function session(role: PlayerRole, teamId?: TeamId, activeTeamId?: TeamId): SessionState {
   return {
     sessionId: SID,
     status: 'active',
+    activeTeamId,
     players: { self: player(role, teamId) },
   } as unknown as SessionState;
 }
@@ -49,10 +50,11 @@ afterEach(() => {
 });
 
 describe('useVoiceScopeSync', () => {
-  it('connected Bomb Room → reassigned Spectator: reconnects listen-only (AC #1/#2)', () => {
+  it('connected Bomb Room → reassigned Spectator: reconnects to the lounge (AC #1/#2)', () => {
     setConnected('bomb-room:sess1:A', true);
     renderHook(() => useVoiceScopeSync(session('spectator'), 'self'));
-    expect(reconnectVoice).toHaveBeenCalledWith({ publish: false });
+    // Room changes bomb-room → lounge; lounge is bidirectional (publish true, 3.7).
+    expect(reconnectVoice).toHaveBeenCalledWith({ publish: true });
   });
 
   it('connected Spectator → reassigned Defuser: reconnects publishing into the Bomb Room', () => {
@@ -65,6 +67,20 @@ describe('useVoiceScopeSync', () => {
     setConnected('bomb-room:sess1:A', true);
     renderHook(() => useVoiceScopeSync(session('expert', 'A'), 'self'));
     expect(reconnectVoice).not.toHaveBeenCalled();
+  });
+
+  it('relay turn flip: an active-team Defuser becomes RESTING → reconnects to the lounge (Story 3.7 AC #4)', () => {
+    // Connected in bomb-room:A as the active team; the turn flips so B is active.
+    setConnected('bomb-room:sess1:A', true);
+    renderHook(() => useVoiceScopeSync(session('defuser', 'A', 'B'), 'self'));
+    expect(reconnectVoice).toHaveBeenCalledWith({ publish: true });
+  });
+
+  it('relay turn flip: a resting Defuser becomes ACTIVE → reconnects into its Bomb Room (Story 3.7 AC #4)', () => {
+    // Connected in the lounge (resting); the turn flips so A is active again.
+    setConnected('spectator-lounge:sess1', true);
+    renderHook(() => useVoiceScopeSync(session('defuser', 'A', 'A'), 'self'));
+    expect(reconnectVoice).toHaveBeenCalledWith({ publish: true });
   });
 
   it('does not reconnect when the connected scope already matches the desired one', () => {
@@ -102,7 +118,7 @@ describe('useVoiceScopeSync', () => {
       initialProps: { s: session('spectator') },
     });
     expect(reconnectVoice).toHaveBeenCalledTimes(1);
-    expect(reconnectVoice).toHaveBeenLastCalledWith({ publish: false });
+    expect(reconnectVoice).toHaveBeenLastCalledWith({ publish: true });
 
     // A re-render that keeps us unavailable toward the SAME scope must not re-fire
     // (single-shot guard — the failing re-mint churns status but does not loop).
@@ -129,7 +145,7 @@ describe('useVoiceScopeSync', () => {
     // Now a real scope change → exactly one reconnect to the new (spectator) scope.
     rerender({ s: session('spectator') });
     expect(reconnectVoice).toHaveBeenCalledTimes(1);
-    expect(reconnectVoice).toHaveBeenLastCalledWith({ publish: false });
+    expect(reconnectVoice).toHaveBeenLastCalledWith({ publish: true });
 
     // A rerender that does NOT change the desired scope must not re-fire.
     rerender({ s: session('spectator') });

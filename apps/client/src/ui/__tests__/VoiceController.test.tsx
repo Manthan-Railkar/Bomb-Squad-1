@@ -23,9 +23,16 @@ vi.mock('../../voice/connectVoice.js', () => ({
 function selfPlayer(role: PlayerRole, teamId?: TeamId): PlayerInfo {
   return { playerId: 'self', displayName: 'Ada', role, teamId, isReady: false };
 }
-function seedSelf(role: PlayerRole, teamId?: TeamId) {
+function seedSelf(role: PlayerRole, teamId?: TeamId, activeTeamId?: TeamId) {
+  // A full-enough session so `deriveDesiredScope` (sessionId + status required)
+  // resolves a real scope — the component now derives its mode from that.
   useGameStore.setState({
-    session: { players: { self: selfPlayer(role, teamId) } } as never,
+    session: {
+      sessionId: 'sess1',
+      status: 'active',
+      activeTeamId,
+      players: { self: selfPlayer(role, teamId) },
+    } as never,
     myPlayerId: 'self',
   });
 }
@@ -57,11 +64,19 @@ describe('VoiceController graceful degradation', () => {
     expect(reconnectVoice).toHaveBeenCalledWith({ publish: true });
   });
 
-  it('a spectator reconnects listen-only (publish: false)', () => {
+  it('a spectator reconnects into the bidirectional lounge (publish: true, Story 3.7)', () => {
     seedSelf('spectator');
     render(<VoiceController />);
     fireEvent.click(screen.getByRole('button', { name: VOICE_RECONNECT }));
-    expect(reconnectVoice).toHaveBeenCalledWith({ publish: false });
+    expect(reconnectVoice).toHaveBeenCalledWith({ publish: true });
+  });
+
+  it('a resting-team player reconnects into the lounge (publish: true, Story 3.7)', () => {
+    // A team-B Bomb-Room seat while team A is active → resting → lounge.
+    seedSelf('defuser', 'B', 'A');
+    render(<VoiceController />);
+    fireEvent.click(screen.getByRole('button', { name: VOICE_RECONNECT }));
+    expect(reconnectVoice).toHaveBeenCalledWith({ publish: true });
   });
 
   it('dismissing hides the banner message but KEEPS Reconnect reachable (AC #1/#2)', () => {

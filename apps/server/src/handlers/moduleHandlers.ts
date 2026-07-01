@@ -194,7 +194,15 @@ export function registerModuleHandlers(io: SessionIOServer, deps: SessionHandler
         // Couple bomb-level transitions to the round machinery. One server `now`
         // for the whole resolution so timer math is consistent.
         const now = deps.timer.now();
-        const resolveDeps = { redis: deps.redis, io, log: deps.log, timer: deps.timer };
+        const resolveDeps = {
+          redis: deps.redis,
+          io,
+          log: deps.log,
+          timer: deps.timer,
+          // Story 3.7: thread the bridge so a resolution INTO between-rounds tears
+          // down the just-active team's lounge forward (optional/best-effort).
+          loungeBridge: deps.loungeBridge,
+        };
 
         if (next.strikes > bomb.strikes) {
           if (next.strikes >= 3) {

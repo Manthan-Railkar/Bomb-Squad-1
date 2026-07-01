@@ -18,6 +18,12 @@ const EnvSchema = Type.Object({
   REDIS_URL: NonEmpty,
   DATABASE_URL: NonEmpty,
   LIVEKIT_URL: NonEmpty,
+  // Server-to-server LiveKit HTTP admin URL (Story 3.7) — used by the
+  // RoomServiceClient (audio bridge) + WebhookReceiver. MUST be reachable from the
+  // SERVER process and be http(s) (e.g. `http://livekit:7880` on the compose
+  // network, `http://localhost:7880` host-run). Deliberately DISTINCT from
+  // LIVEKIT_URL, which is the BROWSER-reachable `ws://` URL — different axes.
+  LIVEKIT_SERVER_URL: NonEmpty,
   LIVEKIT_API_KEY: NonEmpty,
   LIVEKIT_API_SECRET: NonEmpty,
   TURN_SECRET: NonEmpty,
@@ -37,6 +43,9 @@ export interface Config {
   REDIS_URL: string;
   DATABASE_URL: string;
   LIVEKIT_URL: string;
+  /** Server-to-server LiveKit HTTP admin URL for the audio bridge + webhook
+   * receiver (Story 3.7). http(s), server-reachable — NOT the browser `ws://` URL. */
+  LIVEKIT_SERVER_URL: string;
   LIVEKIT_API_KEY: string;
   LIVEKIT_API_SECRET: string;
   TURN_SECRET: string;
@@ -110,6 +119,7 @@ export function parseEnv(source: Record<string, unknown>): Config {
     REDIS_URL: raw.REDIS_URL,
     DATABASE_URL: raw.DATABASE_URL,
     LIVEKIT_URL: raw.LIVEKIT_URL,
+    LIVEKIT_SERVER_URL: raw.LIVEKIT_SERVER_URL,
     LIVEKIT_API_KEY: raw.LIVEKIT_API_KEY,
     LIVEKIT_API_SECRET: raw.LIVEKIT_API_SECRET,
     TURN_SECRET: raw.TURN_SECRET,

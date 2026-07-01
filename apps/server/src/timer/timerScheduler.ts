@@ -14,7 +14,7 @@
 import type { TeamId, TimerState } from '@bomb-squad/shared';
 import type { RedisStore } from '../state/redis.js';
 import { timerKey } from '../state/keys.js';
-import type { SessionIOServer, SessionLog } from '../handlers/sessionHandlers.js';
+import type { SessionIOServer, SessionLog, LoungeBridgePort } from '../handlers/sessionHandlers.js';
 import { expiryInstant, isExpired } from './timerCore.js';
 import { onTimerExpired, type TimerEffectDeps } from './onTimerExpired.js';
 
@@ -31,6 +31,10 @@ export interface TimerSchedulerDeps {
   setTimer?: (cb: () => void, ms: number) => TimerHandle;
   /** Cancel a scheduled wake. Injected for tests; defaults to clearTimeout. */
   clearTimer?: (handle: TimerHandle) => void;
+  /** Bomb Room → Lounge audio bridge (Story 3.7). Threaded into the time-expiry
+   * resolution path so a round that times out into between-rounds tears down its
+   * lounge forward. Optional/best-effort — absent in tests. */
+  loungeBridge?: Pick<LoungeBridgePort, 'unbridgeAll'>;
 }
 
 export interface TimerScheduler {
@@ -149,6 +153,9 @@ export function createTimerScheduler(deps: TimerSchedulerDeps): TimerScheduler {
     io: deps.io,
     log: deps.log,
     timer: scheduler,
+    // Story 3.7: a time-expired resolution INTO between-rounds tears down the
+    // just-active team's lounge forward (optional/best-effort).
+    loungeBridge: deps.loungeBridge,
   };
 
   return scheduler;

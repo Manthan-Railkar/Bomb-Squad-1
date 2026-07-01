@@ -6,6 +6,7 @@ const validEnv = {
   REDIS_URL: 'redis://localhost:6379',
   DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/bombsquad',
   LIVEKIT_URL: 'ws://localhost:7880',
+  LIVEKIT_SERVER_URL: 'http://livekit:7880',
   LIVEKIT_API_KEY: 'devkey',
   LIVEKIT_API_SECRET: 'devsecret',
   TURN_SECRET: 'changeme',
@@ -22,6 +23,9 @@ describe('parseEnv', () => {
     expect(typeof config.TURN_TTL).toBe('number');
     expect(config.REDIS_URL).toBe('redis://localhost:6379');
     expect(config.LIVEKIT_API_SECRET).toBe('devsecret');
+    // Server-to-server admin URL is distinct from the browser ws:// URL (Story 3.7).
+    expect(config.LIVEKIT_SERVER_URL).toBe('http://livekit:7880');
+    expect(config.LIVEKIT_URL).toBe('ws://localhost:7880');
   });
 
   it('throws EnvValidationError naming a missing required key', () => {

@@ -32,7 +32,13 @@
 import type { RoundOutcome, RoundState, SessionState, TeamId, TeamState, TimerState } from '@bomb-squad/shared';
 import type { RedisStore } from '../state/redis.js';
 import { roundKey, sessionKey, timerKey } from '../state/keys.js';
-import { sessionRoom, teamRoom, type SessionIOServer, type SessionLog } from '../handlers/sessionHandlers.js';
+import {
+  sessionRoom,
+  teamRoom,
+  type SessionIOServer,
+  type SessionLog,
+  type LoungeBridgePort,
+} from '../handlers/sessionHandlers.js';
 import { remainingMs } from '../timer/timerCore.js';
 import type { TimerScheduler } from '../timer/timerScheduler.js';
 import { buildScoreboard } from './buildScoreboard.js';
@@ -43,6 +49,11 @@ export interface ResolveRoundDeps {
   log: SessionLog;
   /** Only `cancel` is needed — the ceremony cancels the resolving team's wake. */
   timer: Pick<TimerScheduler, 'cancel'>;
+  /** Bomb Room → Lounge audio bridge (Story 3.7). Optional + best-effort: when a
+   * round resolves INTO between-rounds the just-active team's forward into the
+   * lounge is torn down (AC #6) so a finished round never keeps playing there.
+   * Absent (unit tests / no LiveKit) ⇒ no teardown; the game is unaffected. */
+  loungeBridge?: Pick<LoungeBridgePort, 'unbridgeAll'>;
 }
 
 /**
@@ -286,6 +297,13 @@ async function resolveRoundCeremony(
       .to(sessionRoom(sessionId))
       .emit('SCOREBOARD', { ...buildScoreboard(updatedSession), failedTeams });
     deps.log.info({ sessionId, roundNumber, failedTeams }, 'between-rounds — scoreboard preview emitted');
+
+    // Story 3.7 (AC #6): the round is over — stop forwarding the just-active team's
+    // Bomb Room into the lounge. Best-effort, AFTER the authoritative broadcast, so
+    // a LiveKit failure never blocks the resolution. At this instant the resolved
+    // team is still connected to its Bomb Room (it only re-mints to the lounge on
+    // the NEXT round's open), so removing the forwarded ghost is race-free.
+    void deps.loungeBridge?.unbridgeAll(sessionId).catch(() => undefined);
   }
 }
 
