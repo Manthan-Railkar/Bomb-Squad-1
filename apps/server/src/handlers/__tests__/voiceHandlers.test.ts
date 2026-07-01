@@ -292,6 +292,7 @@ describe('VOICE_TOKEN handler', () => {
     expect(isGrant(first)).toBe(true);
     if (!isGrant(first)) return;
     expect(first.room).toBe(`bomb-room:${sessionId}:A`);
+    expect(first.canPublish).toBe(true); // authoritative grant surfaced on the ack (Story 3.5)
     expect(decodeJwt(first.token).video?.canPublish).toBe(true);
 
     // Facilitator reassigns them to Spectator (team cleared) — the cross-boundary
@@ -303,6 +304,7 @@ describe('VOICE_TOKEN handler', () => {
 
     // New room, listen-only grant — derived from current state, not the prior token.
     expect(second.room).toBe(`spectator-lounge:${sessionId}`);
+    expect(second.canPublish).toBe(false); // ack now carries the authoritative publish right
     expect(second.token).not.toBe(first.token);
     const claims = decodeJwt(second.token);
     expect(claims.video?.room).toBe(`spectator-lounge:${sessionId}`);

@@ -241,6 +241,17 @@ export function createVoiceController(deps: VoiceControllerDeps) {
     }
     const { url, token, room: roomName, identity, iceServers } = result.grant;
 
+    // AUTHORITATIVE publish (Story 3.5 review): the caller's `publish` was an
+    // intent computed from the (possibly already-stale) local role. The server
+    // just derived the real grant from CURRENT authoritative state — adopt its
+    // `canPublish` so we can never pair the granted room with the wrong mic
+    // decision (e.g. a token requested as Defuser but granted as Spectator after
+    // a mid-request reassignment: publishing then would prompt the mic for a
+    // listen-only spectator and be rejected by the grant, stranding them). Every
+    // downstream use (`setMicrophoneEnabled`, `published`, `setConnected`, the
+    // self-heal `onReconnected`) reads this reconciled value.
+    publish = result.grant.canPublish;
+
     // Assemble the optional RTCConfiguration (Story 3.6): TURN iceServers from the
     // grant (corporate-NAT relay path) + the dev force-relay toggle. When neither
     // applies we call `connect(url, token)` with NO third arg — the unchanged

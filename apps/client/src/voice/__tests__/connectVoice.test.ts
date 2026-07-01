@@ -68,6 +68,7 @@ const GRANT = {
   url: 'ws://livekit:7880',
   token: 'SECRET.JWT.VALUE',
   room: 'bomb-room:sess-1:A',
+  canPublish: true,
   identity: 'self-1',
 };
 
@@ -516,6 +517,7 @@ const LOUNGE_GRANT = {
   url: 'ws://livekit:7880',
   token: 'LOUNGE.JWT.VALUE',
   room: 'spectator-lounge:sess-1',
+  canPublish: false,
   identity: 'spec-1',
 };
 

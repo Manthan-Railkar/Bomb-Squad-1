@@ -24,6 +24,7 @@ const GRANT: VoiceTokenGrantPayload = {
   url: 'ws://livekit:7880',
   token: 'SECRET.JWT',
   room: 'bomb-room:sess-1:A',
+  canPublish: true,
   identity: 'self-1',
 };
 

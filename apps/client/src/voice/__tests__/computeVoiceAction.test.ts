@@ -123,13 +123,33 @@ describe('computeVoiceAction', () => {
     expect(computeVoiceAction(connecting, desired)).toEqual({ type: 'none' });
   });
 
-  it('does NOT auto-reconnect from unavailable (that is the manual Reconnect affordance)', () => {
+  it('re-mints from unavailable-after-connect toward the current desired scope (AC #5)', () => {
+    // A post-connect failure (drop / failed connect the user gestured for) clears
+    // room/publishing; a scope change while unavailable must still land the player
+    // in the new scope, not strand them on the old room's affordance. The hook's
+    // single-shot guard (not this pure fn) prevents a retry storm.
     const unavailable: VoiceConnectionView = { status: 'unavailable', publishing: false };
     const desired = deriveDesiredScope(self('spectator'), 'active', SID);
-    expect(computeVoiceAction(unavailable, desired)).toEqual({ type: 'none' });
+    expect(computeVoiceAction(unavailable, desired)).toEqual({ type: 'reconnect', publish: false });
   });
 
-  it('no desired scope (unmanaged role) ⇒ NO action even while connected', () => {
-    expect(computeVoiceAction(connectedBombRoom, null)).toEqual({ type: 'none' });
+  it('no desired scope (unmanaged role) while connected ⇒ TEAR DOWN the stale connection', () => {
+    // Leaving a connected, possibly-publishing connection alive in a room the
+    // player no longer belongs to is the stale-scope leak this story targets.
+    expect(computeVoiceAction(connectedBombRoom, null)).toEqual({ type: 'disconnect' });
+  });
+
+  it('no desired scope while unavailable ⇒ tear down (no lingering kept-alive room)', () => {
+    const unavailable: VoiceConnectionView = { status: 'unavailable', publishing: false };
+    expect(computeVoiceAction(unavailable, null)).toEqual({ type: 'disconnect' });
+  });
+
+  it('no desired scope while idle/connecting ⇒ NO action (nothing to tear down)', () => {
+    expect(computeVoiceAction({ status: 'idle', publishing: false }, null)).toEqual({
+      type: 'none',
+    });
+    expect(computeVoiceAction({ status: 'connecting', publishing: false }, null)).toEqual({
+      type: 'none',
+    });
   });
 });

@@ -84,12 +84,13 @@ export function resolveVoiceScope(participant: VoiceParticipant): ResolvedVoiceS
  * `toJwt()` is async in livekit-server-sdk v2 (it was a synchronous `toJWT()`
  * in v1) — it MUST be awaited; a forgotten await ships a `Promise` cast to
  * string, i.e. a broken token. Returns the JWT plus the room it is scoped to
- * (the caller needs the room name for its ack and for logging).
+ * AND the authoritative `canPublish` grant — the client drives its mic-publish
+ * decision from the latter (Story 3.5) so it can never disagree with the token.
  */
 export async function mintVoiceToken(
   participant: VoiceParticipant,
   credentials: VoiceCredentials,
-): Promise<{ token: string; room: string }> {
+): Promise<{ token: string; room: string; canPublish: boolean }> {
   const { room, grant } = resolveVoiceScope(participant);
 
   const at = new AccessToken(credentials.apiKey, credentials.apiSecret, {
@@ -99,5 +100,5 @@ export async function mintVoiceToken(
   at.addGrant(grant);
 
   const token = await at.toJwt();
-  return { token, room };
+  return { token, room, canPublish: grant.canPublish ?? false };
 }

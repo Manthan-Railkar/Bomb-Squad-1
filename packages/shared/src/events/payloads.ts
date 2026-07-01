@@ -229,6 +229,16 @@ export interface VoiceTokenGrantPayload {
   token: string;
   /** The single room the token is scoped to (`bomb-room:…` or `spectator-lounge:…`). */
   room: string;
+  /**
+   * The AUTHORITATIVE publish right baked into the token's grant (Story 3.5).
+   * The client must drive its mic-publish decision from THIS — not from its own
+   * pre-request `publish` intent — so a scope change that resolves server-side
+   * mid-request (e.g. a token requested as Defuser but granted as Spectator after
+   * a reassignment) can never pair the server room with a stale client publish
+   * flag (unexpected mic prompt for a listen-only spectator / a rejected publish
+   * stranding the player). Mirrors the grant's `canPublish`.
+   */
+  canPublish: boolean;
   /** The participant identity baked into the token (the server-side player id). */
   identity: string;
   /**

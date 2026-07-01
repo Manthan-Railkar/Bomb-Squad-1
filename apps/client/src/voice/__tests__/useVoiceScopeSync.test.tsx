@@ -12,10 +12,11 @@ import { useVoiceScopeSync } from '../useVoiceScopeSync.js';
  * + failure→unavailable semantics are covered in connectVoice.test.ts.
  */
 const reconnectVoice = vi.fn(async (_opts?: { publish?: boolean }) => undefined);
+const disconnectVoice = vi.fn(async () => undefined);
 vi.mock('../connectVoice.js', () => ({
   connectVoice: async () => undefined,
   reconnectVoice: (opts?: { publish?: boolean }) => reconnectVoice(opts),
-  disconnectVoice: async () => undefined,
+  disconnectVoice: () => disconnectVoice(),
 }));
 
 const SID = 'sess1';
@@ -38,6 +39,7 @@ function setConnected(room: string, publishing: boolean) {
 
 beforeEach(() => {
   reconnectVoice.mockClear();
+  disconnectVoice.mockClear();
   useVoiceStore.setState({ status: 'idle', room: undefined, publishing: false });
 });
 
@@ -77,10 +79,44 @@ describe('useVoiceScopeSync', () => {
     expect(reconnectVoice).not.toHaveBeenCalled();
   });
 
-  it('is inert for an unmanaged role (facilitator) while connected', () => {
+  it('connected → promoted to an unmanaged role (facilitator): tears the stale connection down', () => {
     setConnected('bomb-room:sess1:A', true);
     renderHook(() => useVoiceScopeSync(session('facilitator'), 'self'));
     expect(reconnectVoice).not.toHaveBeenCalled();
+    expect(disconnectVoice).toHaveBeenCalledTimes(1);
+  });
+
+  it('connected → self removed from the roster: tears the stale publishing connection down', () => {
+    setConnected('bomb-room:sess1:A', true);
+    // `self` is no longer in session.players → desired scope is null.
+    const orphaned = { sessionId: SID, status: 'active', players: {} } as unknown as SessionState;
+    renderHook(() => useVoiceScopeSync(orphaned, 'self'));
+    expect(disconnectVoice).toHaveBeenCalledTimes(1);
+    expect(reconnectVoice).not.toHaveBeenCalled();
+  });
+
+  it('reassigned WHILE unavailable: re-mints once toward the new scope, then does not storm (AC #5)', () => {
+    // A post-connect drop left us unavailable; a scope change must still re-mint.
+    useVoiceStore.setState({ status: 'unavailable', room: undefined, publishing: false });
+    const { rerender } = renderHook(({ s }: { s: SessionState }) => useVoiceScopeSync(s, 'self'), {
+      initialProps: { s: session('spectator') },
+    });
+    expect(reconnectVoice).toHaveBeenCalledTimes(1);
+    expect(reconnectVoice).toHaveBeenLastCalledWith({ publish: false });
+
+    // A re-render that keeps us unavailable toward the SAME scope must not re-fire
+    // (single-shot guard — the failing re-mint churns status but does not loop).
+    rerender({ s: session('spectator') });
+    expect(reconnectVoice).toHaveBeenCalledTimes(1);
+  });
+
+  it('never re-mints from unavailable that never connected toward an idle scope change... still fires once (opted-in)', () => {
+    // Even a first-connect failure means the user gestured (opted in) — a scope
+    // change re-mints once toward the resolvable target (never auto-connects idle).
+    useVoiceStore.setState({ status: 'unavailable', room: undefined, publishing: false });
+    renderHook(() => useVoiceScopeSync(session('defuser', 'A'), 'self'));
+    expect(reconnectVoice).toHaveBeenCalledTimes(1);
+    expect(reconnectVoice).toHaveBeenLastCalledWith({ publish: true });
   });
 
   it('collapses to the latest desired scope across successive updates (no storm)', () => {

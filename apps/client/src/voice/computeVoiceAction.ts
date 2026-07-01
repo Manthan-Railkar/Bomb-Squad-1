@@ -34,7 +34,8 @@ export interface VoiceConnectionView {
 
 export type VoiceAction =
   | { type: 'none' }
-  | { type: 'reconnect'; publish: boolean };
+  | { type: 'reconnect'; publish: boolean }
+  | { type: 'disconnect' };
 
 const NONE: VoiceAction = { type: 'none' };
 
@@ -78,33 +79,51 @@ export function deriveDesiredScope(
   }
 }
 
+const DISCONNECT: VoiceAction = { type: 'disconnect' };
+
 /**
- * Decide whether to re-mint the voice connection given the current connection
- * and the desired scope. Re-mint (disconnect → fresh connect) ONLY when:
+ * Decide what to do with the voice connection given the current connection and
+ * the desired scope. Acts ONLY once the user has opted in — status is `connected`
+ * or `unavailable`-after-connect (AC #5: never auto-connect from `idle`; the
+ * first connect still needs the gesture). `connecting` is left alone: the room
+ * isn't known yet, so we cannot compare — the in-flight connect lands first, then
+ * the next `connected` evaluation reconciles to the latest desired scope
+ * (collapsing rapid SESSION_STATE bursts to the newest target, not each one).
  *
- * - The user has already opted in — status is `connected` (AC #5: never
- *   auto-connect from `idle`; the first connect still needs the gesture). We do
- *   NOT act while `connecting`: the room isn't known yet, so we cannot compare —
- *   the in-flight connect lands first, then the next `connected` evaluation
- *   reconciles to the latest desired scope (collapsing rapid SESSION_STATE bursts
- *   to the newest target, not each intermediate one).
- * - A desired scope resolves (a re-mint-managed role with a valid scope).
- * - The desired `{ room, publish }` actually DIFFERS from the connected one.
- *   Comparing the full tuple is what makes Defuser↔Expert on the same team a
- *   no-op (identical room + publish ⇒ no audio drop — AC #3) while Spectator↔
- *   Facilitator in the shared lounge (same room, different publish) still
- *   re-mints.
- *
- * `unavailable` is intentionally NOT auto-reconnected here: a post-drop reconnect
- * is the user-driven "Reconnect voice" affordance (Story 3.6), which already
- * connects in the player's live role mode (so it lands in the new scope anyway).
+ * - **`desired === null`** (a role this client's voice UI does not manage —
+ *   facilitator / un-teamed / self removed from the roster): TEAR DOWN. Leaving a
+ *   connected — possibly still-publishing — connection alive in a room the player
+ *   no longer belongs to is exactly the stale-scope leak this story targets
+ *   (Story 3.5 review, finding 1). Not reachable via `TEAM_ASSIGN` today, but the
+ *   relay's active↔resting routing (3.7) and roster removal can reach it.
+ * - **`connected` with a resolvable desired scope**: re-mint (disconnect → fresh
+ *   connect) only when the desired `{ room, publish }` actually DIFFERS from the
+ *   connected one. Comparing the full tuple is what makes Defuser↔Expert on the
+ *   same team a no-op (identical room + publish ⇒ no audio drop — AC #3) while
+ *   Spectator↔Facilitator in the shared lounge (same room, different publish)
+ *   still re-mints.
+ * - **`unavailable` with a resolvable desired scope** (a post-connect failure —
+ *   transport drop or a failed connect the user already gestured for): re-mint
+ *   toward the desired scope (AC #5, Story 3.5 review finding 2), so a player
+ *   reassigned WHILE unavailable is not stranded showing the old room's
+ *   affordance. `unavailable` clears `room`/`publishing`, so a tuple compare
+ *   cannot gate this — the caller (`useVoiceScopeSync`) holds a single-shot
+ *   attempt guard so a re-mint that keeps failing does not storm.
  */
 export function computeVoiceAction(
   conn: VoiceConnectionView,
   desired: DesiredVoiceScope | null,
 ): VoiceAction {
-  if (conn.status !== 'connected') return NONE;
-  if (desired === null) return NONE;
+  // Only reconcile a connection the user has opted into and that has settled;
+  // `idle` (never connected — AC #5) and `connecting` (room unknown) do nothing.
+  if (conn.status !== 'connected' && conn.status !== 'unavailable') return NONE;
+
+  // Managed scope disappeared → tear the stale connection down.
+  if (desired === null) return DISCONNECT;
+
+  if (conn.status === 'unavailable') return { type: 'reconnect', publish: desired.publish };
+
+  // status === 'connected': re-mint only on an actual effective-scope change.
   if (conn.room === desired.room && conn.publishing === desired.publish) return NONE;
   return { type: 'reconnect', publish: desired.publish };
 }

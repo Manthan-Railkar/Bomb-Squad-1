@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { SessionState } from '@bomb-squad/shared';
 import { useVoiceStore } from '../store/voiceStore.js';
-import { reconnectVoice } from './connectVoice.js';
+import { disconnectVoice, reconnectVoice } from './connectVoice.js';
 import { computeVoiceAction, deriveDesiredScope } from './computeVoiceAction.js';
 
 /**
@@ -23,7 +23,11 @@ import { computeVoiceAction, deriveDesiredScope } from './computeVoiceAction.js'
  * Reconnect-storm safety: `connectVoice`'s `connectEpoch` guard supersedes any
  * in-flight connect/disconnect, and `computeVoiceAction` compares against the
  * DESIRED scope (not each intermediate state), so a burst of `SESSION_STATE`
- * updates collapses to the latest target.
+ * updates collapses to the latest target. Re-minting from `unavailable` (AC #5)
+ * has no connected tuple to compare against, so a `lastAttemptRef` gate makes it
+ * single-shot per target: a re-mint that itself fails settles back to
+ * `unavailable` and would otherwise re-run this effect forever — the gate skips
+ * a repeat toward the SAME desired scope (a genuinely new scope still fires).
  */
 export function useVoiceScopeSync(
   session: SessionState | null,
@@ -36,13 +40,27 @@ export function useVoiceScopeSync(
   const self = selfId !== null ? session?.players[selfId] : undefined;
   const desired = deriveDesiredScope(self, session?.status, session?.sessionId);
 
+  // The desired scope we last initiated an `unavailable` re-mint toward, so a
+  // failing re-mint (unavailable → idle → connecting → unavailable) does not
+  // retry the same target on every re-run. Cleared once we reach a healthy
+  // `connected` so a later drop can re-mint afresh.
+  const lastAttemptRef = useRef<string | null>(null);
+
   // Depend on the resolved scalars (not object identities) so the effect re-runs
   // exactly when the connection or the desired scope changes — never on an
   // unrelated SESSION_STATE field churn.
   useEffect(() => {
+    if (status === 'connected') lastAttemptRef.current = null;
     const action = computeVoiceAction({ status, room, publishing }, desired);
     if (action.type === 'reconnect') {
+      if (status === 'unavailable') {
+        const target = `${action.publish ? 'pub' : 'sub'}@${desired?.room ?? ''}`;
+        if (lastAttemptRef.current === target) return; // already tried this scope
+        lastAttemptRef.current = target;
+      }
       void reconnectVoice({ publish: action.publish });
+    } else if (action.type === 'disconnect') {
+      void disconnectVoice();
     }
   }, [status, room, publishing, desired?.room, desired?.publish]);
 }

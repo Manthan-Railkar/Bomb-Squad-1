@@ -106,7 +106,7 @@ export function registerVoiceHandlers(io: VoiceIOServer, deps: VoiceHandlerDeps)
           return;
         }
 
-        const { token, room } = await mintVoiceToken(
+        const { token, room, canPublish } = await mintVoiceToken(
           {
             // Identity MUST be the durable playerId so the LiveKit participant
             // identity equals the roster playerId — the client maps
@@ -142,6 +142,7 @@ export function registerVoiceHandlers(io: VoiceIOServer, deps: VoiceHandlerDeps)
           url: deps.config.LIVEKIT_URL,
           token,
           room,
+          canPublish,
           identity: playerId,
           ...(iceServers !== undefined ? { iceServers } : {}),
         };
