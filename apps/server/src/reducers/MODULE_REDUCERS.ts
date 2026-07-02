@@ -3,10 +3,12 @@ import {
   WIRES_MODULE_ID,
   BUTTON_MODULE_ID,
   PASSWORDS_MODULE_ID,
+  COMPLICATED_WIRES_MODULE_ID,
   devDemoReducer,
   wiresReducer,
   buttonReducer,
   passwordsReducer,
+  complicatedWiresReducer,
   type ModuleState,
   type Reducer,
 } from '@bomb-squad/shared';
@@ -34,4 +36,7 @@ export const MODULE_REDUCERS: Record<string, ModuleReducer> = {
   [BUTTON_MODULE_ID]: buttonReducer as ModuleReducer,
   // passwords: Story 5.5 — cycle five columns to spell a listed word, SUBMIT.
   [PASSWORDS_MODULE_ID]: passwordsReducer as ModuleReducer,
+  // complicated-wires: Story 7.1 — first Hard module. Per-wire truth-table cut
+  // decision against the bomb's public edgework; cut every should-cut wire.
+  [COMPLICATED_WIRES_MODULE_ID]: complicatedWiresReducer as ModuleReducer,
 };

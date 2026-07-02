@@ -4,6 +4,7 @@ import {
   WIRES_MODULE_ID,
   BUTTON_MODULE_ID,
   PASSWORDS_MODULE_ID,
+  COMPLICATED_WIRES_MODULE_ID,
   devDemoReducer,
   generateDevDemo,
   generateWires,
@@ -11,6 +12,7 @@ import {
   type BombContext,
   type BombState,
   type ButtonState,
+  type ComplicatedWiresState,
   type ModuleState,
   type PasswordsState,
 } from '@bomb-squad/shared';
@@ -188,6 +190,43 @@ describe('open/closed module registration (AC2)', () => {
       type: 'MODULE_ACTION',
       moduleIndex: 0,
       payload: { type: 'SUBMIT' },
+    });
+    expect(struck.modules[0].status).toBe('armed'); // transient 'struck' rolled up
+    expect(struck.strikes).toBe(1);
+  });
+
+  it('complicated-wires (7.1) is registered and solves/strikes through the untouched bomb reducer', () => {
+    expect(MODULE_REDUCERS[COMPLICATED_WIRES_MODULE_ID]).toBeDefined();
+    // CTX serial 'XY42Z1' ends in 1 (odd), no Parallel port, 1 battery. Under it:
+    //   idx0 attrs all-false → code C → should cut.
+    //   idx1 blue+led → code D → should NOT cut.
+    // Explicit data so the decision is deterministic without seed-searching.
+    const data: ComplicatedWiresState = {
+      wires: [
+        { attrs: { redStripe: false, blueStripe: false, star: false, led: false }, cut: false }, // C
+        { attrs: { redStripe: false, blueStripe: true, star: false, led: true }, cut: false }, // D
+      ],
+      ctx: CTX,
+    };
+    const bomb: BombState = {
+      context: CTX,
+      modules: [{ moduleId: COMPLICATED_WIRES_MODULE_ID, status: 'armed', data }],
+      strikes: 0,
+      solved: false,
+    };
+    // Cutting the sole should-cut wire (idx0) solves with no strike.
+    const solved = bombReducer(bomb, {
+      type: 'MODULE_ACTION',
+      moduleIndex: 0,
+      payload: { type: 'CUT', wireIndex: 0 },
+    });
+    expect(solved.modules[0].status).toBe('solved');
+    expect(solved.strikes).toBe(0);
+    // Cutting the should-not-cut wire (idx1) rolls up into a team strike and re-arms.
+    const struck = bombReducer(bomb, {
+      type: 'MODULE_ACTION',
+      moduleIndex: 0,
+      payload: { type: 'CUT', wireIndex: 1 },
     });
     expect(struck.modules[0].status).toBe('armed'); // transient 'struck' rolled up
     expect(struck.strikes).toBe(1);

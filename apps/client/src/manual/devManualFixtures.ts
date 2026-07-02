@@ -1,5 +1,10 @@
 import type { ManualPage } from '@bomb-squad/shared';
-import { getWiresManualPages, getButtonManualPages, getPasswordsManualPages } from '@bomb-squad/shared';
+import {
+  getWiresManualPages,
+  getButtonManualPages,
+  getPasswordsManualPages,
+  getComplicatedWiresManualPages,
+} from '@bomb-squad/shared';
 
 /**
  * DEV FIXTURES for `/dev/manual` ONLY — not game content.
@@ -44,7 +49,10 @@ export const DEV_MANUAL_PAGES: ManualPage[] = [
     })),
   },
   stub('morse-code', 'Morse Code'),
-  stub('complicated-wires', 'Complicated Wires'),
+  // Complicated Wires: CANONICAL content from the module's getManualPages()
+  // (Story 7.1) — the cut-code legend + 16-row truth table render from the same
+  // COMPLICATED_WIRES_TABLE the solver evaluates.
+  ...getComplicatedWiresManualPages(),
   stub('wire-sequences', 'Wire Sequences'),
   stub('whos-on-first', "Who's on First"),
   // Passwords: CANONICAL content from the module's getManualPages() (Story 5.5)
