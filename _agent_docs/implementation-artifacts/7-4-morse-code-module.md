@@ -278,3 +278,4 @@ claude-opus-4-8 (gds-dev-story workflow)
 |---|---|
 | 2026-07-02 | Story 7.4 (Morse Code Module) created via gds-create-story in the sprint-7-hard-modules worktree. Status → ready-for-dev. |
 | 2026-07-02 | Implemented Morse Code module (shared logic + client rendering + 3-place registration). Repointed the "unregistered id" fixture chain to `keypads` (Hard tier exhausted). All automated tests + typecheck green. Status → review (pending Jay interactive verification). |
+| 2026-07-02 | Manual polish (Jay feedback): Morse chart now renders as a compact two-pair `Char\|Code\|Char\|Code` table (18 rows, A–Z then 0–9) instead of a tall 36-row single column; intro condensed from two paragraphs to one — mirrors the printed manual's density. |

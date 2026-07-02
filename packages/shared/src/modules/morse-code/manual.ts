@@ -10,14 +10,34 @@ import { MORSE_ALPHABET, MORSE_TABLE } from './solve.js';
  * dots/dashes render as '.' / '-' characters, no images.
  */
 
-/** Morse chart rows (A–Z, 0–9) rendered from MORSE_ALPHABET — never a 2nd copy. */
+/**
+ * Morse chart (A–Z, 0–9) rendered from MORSE_ALPHABET — never a 2nd copy. Laid
+ * out in TWO side-by-side character/code column pairs (mirroring the printed
+ * manual, docs/…v1.pdf p.12) so the 36 entries render as a compact 18-row block
+ * instead of a tall single-column ribbon.
+ */
 function alphabetTable(): ManualSection {
+  // Explicit A–Z then 0–9 order (JS would otherwise list the digit keys first);
+  // matches the printed manual's reading order.
+  const chars = [...'abcdefghijklmnopqrstuvwxyz0123456789'];
+  const half = Math.ceil(chars.length / 2); // 18
+  const rows: string[][] = [];
+  for (let r = 0; r < half; r++) {
+    const lch = chars[r];
+    const rch = chars[r + half];
+    rows.push([
+      lch.toUpperCase(),
+      MORSE_ALPHABET[lch],
+      rch ? rch.toUpperCase() : '',
+      rch ? MORSE_ALPHABET[rch] : '',
+    ]);
+  }
   return {
     heading: 'International Morse Code',
     content: '',
     table: {
-      headers: ['Character', 'Code'],
-      rows: Object.entries(MORSE_ALPHABET).map(([ch, code]) => [ch.toUpperCase(), code]),
+      headers: ['Character', 'Code', 'Character', 'Code'],
+      rows,
     },
   };
 }
@@ -43,20 +63,12 @@ export function getMorseCodeManualPages(): ManualPage[] {
       sections: [
         {
           content:
-            'A light on the module flashes a single WORD in Morse code, then loops. ' +
-            'A short flash is a dot; a long flash is a dash. A short gap separates ' +
-            'symbols within a letter; a longer gap separates letters; a very long ' +
-            'gap marks the end of the word before it repeats. Decode the ENTIRE ' +
-            'word first — then look it up below. The table maps a WORD to a ' +
-            'frequency; it is NOT a letter-by-letter lookup.',
-        },
-        {
-          content:
-            'Once you know the word, tell the Defuser its frequency. They step the ' +
-            'dial to that frequency and press TX to transmit. Decode tip: several ' +
-            'words differ only in their first letter or two (slick / trick / brick ' +
-            '/ flick, and break / steak / beats) — use the long repeat-gap to find ' +
-            'where the word starts before committing to a reading.',
+            'A short flash is a dot; a long flash is a dash. A long gap separates ' +
+            'letters and a very long gap marks the end of the word before it loops. ' +
+            'Decode the ENTIRE word, then look up its frequency below — the lookup ' +
+            'is by whole word, NOT letter by letter. Tip: some words differ only in ' +
+            'their first letters (slick / trick / brick / flick), so use the long ' +
+            'repeat-gap to find where the word starts.',
         },
         alphabetTable(),
         frequencyTable(),

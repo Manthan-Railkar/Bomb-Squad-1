@@ -331,13 +331,24 @@ describe('getMorseCodeManualPages — renders the same constants the solver read
     expect(pages[0].chapterId).toBe(MORSE_CODE_MODULE_ID);
   });
 
-  it('renders the alphabet chart FROM MORSE_ALPHABET', () => {
+  it('renders the alphabet chart FROM MORSE_ALPHABET (compact 2-pair layout)', () => {
     const chart = pages[0].sections.find((s) => s.table?.headers[0] === 'Character');
     expect(chart?.table).toBeDefined();
-    expect(chart!.table!.rows).toHaveLength(36);
-    for (const [ch, code] of chart!.table!.rows) {
-      expect(MORSE_ALPHABET[ch.toLowerCase()]).toBe(code);
+    // Two character/code column pairs → 18 rows for the 36 entries.
+    expect(chart!.table!.headers).toEqual(['Character', 'Code', 'Character', 'Code']);
+    expect(chart!.table!.rows).toHaveLength(18);
+    // Every non-empty (char, code) cell pair matches the alphabet, and all 36
+    // entries are present exactly once.
+    const seen = new Set<string>();
+    for (const [lch, lcode, rch, rcode] of chart!.table!.rows) {
+      expect(MORSE_ALPHABET[lch.toLowerCase()]).toBe(lcode);
+      seen.add(lch.toLowerCase());
+      if (rch !== '') {
+        expect(MORSE_ALPHABET[rch.toLowerCase()]).toBe(rcode);
+        seen.add(rch.toLowerCase());
+      }
     }
+    expect(seen.size).toBe(36);
   });
 
   it('renders the word→frequency table FROM MORSE_TABLE via formatMorseFrequency', () => {
