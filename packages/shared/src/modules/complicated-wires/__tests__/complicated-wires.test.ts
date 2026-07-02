@@ -12,7 +12,7 @@ import { generateComplicatedWires } from '../generate.js';
 import {
   COMPLICATED_WIRES_TABLE,
   codeForAttributes,
-  shouldCut,
+  complicatedWiresShouldCut,
   serialLastDigitEven,
   type CutCode,
 } from '../solve.js';
@@ -114,7 +114,7 @@ describe('serialLastDigitEven', () => {
   });
 });
 
-describe('shouldCut — 16 combos × bomb-context sweep (AC6, the correctness crux)', () => {
+describe('complicatedWiresShouldCut — 16 combos × bomb-context sweep (AC6, the correctness crux)', () => {
   // Context matrix: serial parity even/odd × Parallel present/absent × batteries 0/1/2.
   const CONTEXTS: ReadonlyArray<{ label: string; ctx: BombContext }> = (() => {
     const out: { label: string; ctx: BombContext }[] = [];
@@ -144,7 +144,7 @@ describe('shouldCut — 16 combos × bomb-context sweep (AC6, the correctness cr
     for (const [red, blue, star, led, code] of EXPECTED) {
       const a = attrs(red, blue, star, led);
       for (const { ctx } of CONTEXTS) {
-        expect(shouldCut(a, ctx)).toBe(expectedDecision(code, ctx));
+        expect(complicatedWiresShouldCut(a, ctx)).toBe(expectedDecision(code, ctx));
       }
     }
   });
@@ -203,7 +203,7 @@ describe('generateComplicatedWires', () => {
           const ctx: BombContext = { serialNumber, batteryCount, indicators: [], ports: [...ports] };
           for (let seed = 0; seed < 300; seed++) {
             const { wires } = generateComplicatedWires(seed, ctx);
-            expect(wires.some((w) => shouldCut(w.attrs, ctx))).toBe(true);
+            expect(wires.some((w) => complicatedWiresShouldCut(w.attrs, ctx))).toBe(true);
           }
         }
       }

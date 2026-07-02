@@ -2497,10 +2497,12 @@ describe('ROUND_CONFIGURE handler (Story 8.1)', () => {
   it('un-generatable pool id → INVALID_PAYLOAD (fails here, not at round start)', async () => {
     await createSession(facilitator);
     const errorPromise = nextEvent<ErrorPayload>(facilitator, 'ERROR');
-    facilitator.emit('ROUND_CONFIGURE', { config: { ...fullConfig, modulePool: ['keypads'] } } as never);
+    // Every canonical MODULE_IDS entry is registered (Epics 5–7 complete), so
+    // the un-generatable example is a synthetic sentinel that can never gain one.
+    facilitator.emit('ROUND_CONFIGURE', { config: { ...fullConfig, modulePool: ['not-a-module'] } } as never);
     const error = await errorPromise;
     expect(error.code).toBe('INVALID_PAYLOAD');
-    expect(error.message).toMatch(/keypads/);
+    expect(error.message).toMatch(/not-a-module/);
   });
 
   it('a partial config (missing fields) → INVALID_PAYLOAD (ROUND_CONFIGURE needs a full config)', async () => {

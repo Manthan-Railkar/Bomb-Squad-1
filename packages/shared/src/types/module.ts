@@ -6,11 +6,38 @@ export interface ManualTable {
   rows: string[][];
 }
 
+/** A grid cell coordinate (x = column, y = row; origin top-left). */
+export interface Cell {
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
+ * A structured maze for the manual — the first non-table structured manual
+ * content (Story 6.4). A maze cannot be a text table, so `ManualSection.maze`
+ * carries the data (size + walls + markers) and the shared PageRenderer draws
+ * it (modules author data, never markup). `walls` uses the same canonical
+ * blocked-edge encoding (`"x1,y1|x2,y2"` keys) as the module's MAZE_LAYOUTS, so
+ * the manual the Expert reads and the logic that judges a move cannot diverge.
+ */
+export interface ManualMaze {
+  /** Grid dimension (6 → a 6×6 lattice). */
+  size: number;
+  /** The circular markers that identify this maze. */
+  markers: readonly Cell[];
+  /** Canonical blocked-edge keys between adjacent cells. */
+  walls: readonly string[];
+}
+
 export interface ManualSection {
   heading?: string;
   /** Plain text content or a structured description for rendering. */
   content: string;
   table?: ManualTable;
+  /** Additive (Story 6.4): a single structured maze rendered by PageRenderer. */
+  maze?: ManualMaze;
+  /** Additive (Story 6.4): a grid of structured mazes (the 9-up mazes page). */
+  mazes?: ManualMaze[];
 }
 
 /** Structured manual content. NOT raw HTML or untyped JSX. */

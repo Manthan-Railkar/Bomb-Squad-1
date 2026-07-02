@@ -80,7 +80,7 @@ export function codeForAttributes(attrs: WireAttributes): CutCode {
  *   P → Parallel port present, B → ≥2 batteries.
  * BombContext is read-only — never mutated.
  */
-export function shouldCut(attrs: WireAttributes, ctx: BombContext): boolean {
+export function complicatedWiresShouldCut(attrs: WireAttributes, ctx: BombContext): boolean {
   switch (codeForAttributes(attrs)) {
     case 'C':
       return true;

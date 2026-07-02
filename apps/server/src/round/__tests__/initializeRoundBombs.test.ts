@@ -46,10 +46,10 @@ describe('initializeRoundBombs', () => {
   it('rejects a bad pool WITHOUT writing any team bomb (no partial round state)', async () => {
     const store = createMemoryRedisStore();
     await expect(
-      // 'keypads' (Epic 6, Story 6.1 — backlog) has no registered generator yet;
-      // every Epic 7 Hard module (through morse-code, 7.4) is now registered, so
-      // the unregistered-id example moves to the next planned id in MODULE_IDS.
-      initializeRoundBombs(store, 'sess-bad', 1, config({ modulePool: ['keypads'] }), TEAMS),
+      // Every canonical MODULE_IDS entry is registered (Epics 5–7 complete), so
+      // the unregistered-id example is a synthetic sentinel that can never gain
+      // a generator — the guard is about unknown ids, not unshipped modules.
+      initializeRoundBombs(store, 'sess-bad', 1, config({ modulePool: ['not-a-module'] }), TEAMS),
     ).rejects.toThrow(/unregistered id/);
     expect(store.data.size).toBe(0);
   });

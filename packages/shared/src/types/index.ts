@@ -14,6 +14,8 @@ export type {
 export type { RoundState, RoundOutcome } from './round.js';
 export type {
   ManualTable,
+  Cell,
+  ManualMaze,
   ManualSection,
   ManualPage,
   ModuleState,

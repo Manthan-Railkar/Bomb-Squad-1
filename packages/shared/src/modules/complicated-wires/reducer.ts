@@ -1,6 +1,6 @@
 import type { ModuleState, Reducer } from '../../types/index.js';
 import { isComplicatedWiresAction, type ComplicatedWiresState } from './types.js';
-import { shouldCut } from './solve.js';
+import { complicatedWiresShouldCut } from './solve.js';
 
 /**
  * Pure reducer for the complicated-wires module.
@@ -56,8 +56,8 @@ export const complicatedWiresReducer: Reducer<ModuleState<ComplicatedWiresState>
 
   // Wrong cut → transient strike (wire still severed above). Correct cut →
   // solved iff every should-cut wire is now severed; else stays armed.
-  const wasShouldCut = shouldCut(state.data.wires[wireIndex].attrs, ctx);
-  const allShouldCutSevered = wires.every((w) => !shouldCut(w.attrs, ctx) || w.cut);
+  const wasShouldCut = complicatedWiresShouldCut(state.data.wires[wireIndex].attrs, ctx);
+  const allShouldCutSevered = wires.every((w) => !complicatedWiresShouldCut(w.attrs, ctx) || w.cut);
 
   return {
     ...state,

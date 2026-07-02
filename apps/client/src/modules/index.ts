@@ -3,6 +3,10 @@ import { DEV_DEMO_MODULE } from './dev-demo/index.js';
 import { WIRES_MODULE } from './wires/index.js';
 import { BUTTON_MODULE } from './the-button/index.js';
 import { PASSWORDS_MODULE } from './passwords/index.js';
+import { KEYPADS_MODULE } from './keypads/index.js';
+import { WHOS_ON_FIRST_MODULE } from './whos-on-first/index.js';
+import { WIRE_SEQUENCES_MODULE } from './wire-sequences/index.js';
+import { MAZES_MODULE } from './mazes/index.js';
 import { COMPLICATED_WIRES_MODULE } from './complicated-wires/index.js';
 import { SIMON_SAYS_MODULE } from './simon-says/index.js';
 import { MEMORY_MODULE } from './memory/index.js';
@@ -24,6 +28,10 @@ export const SANDBOX_MODULES: readonly SandboxModule[] = [
   WIRES_MODULE as SandboxModule,
   BUTTON_MODULE as SandboxModule,
   PASSWORDS_MODULE as SandboxModule,
+  KEYPADS_MODULE as SandboxModule,
+  WHOS_ON_FIRST_MODULE as SandboxModule,
+  WIRE_SEQUENCES_MODULE as SandboxModule,
+  MAZES_MODULE as SandboxModule,
   COMPLICATED_WIRES_MODULE as SandboxModule,
   SIMON_SAYS_MODULE as SandboxModule,
   MEMORY_MODULE as SandboxModule,
@@ -35,6 +43,10 @@ export {
   WIRES_MODULE,
   BUTTON_MODULE,
   PASSWORDS_MODULE,
+  KEYPADS_MODULE,
+  WHOS_ON_FIRST_MODULE,
+  WIRE_SEQUENCES_MODULE,
+  MAZES_MODULE,
   COMPLICATED_WIRES_MODULE,
   SIMON_SAYS_MODULE,
   MEMORY_MODULE,

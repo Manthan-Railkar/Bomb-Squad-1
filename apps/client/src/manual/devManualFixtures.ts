@@ -3,6 +3,10 @@ import {
   getWiresManualPages,
   getButtonManualPages,
   getPasswordsManualPages,
+  getKeypadsManualPages,
+  getWhosOnFirstManualPages,
+  getWireSequencesManualPages,
+  getMazesManualPages,
   getComplicatedWiresManualPages,
   getSimonSaysManualPages,
   getMemoryManualPages,
@@ -39,7 +43,10 @@ export const DEV_MANUAL_PAGES: ManualPage[] = [
   // The Button: CANONICAL content from the module's getManualPages() (Story 5.4)
   // — the decision + release tables render from the same data the solver uses.
   ...getButtonManualPages(),
-  stub('keypads', 'Keypads'),
+  // Keypads: CANONICAL content from the module's getManualPages() (Story 6.1)
+  // — the six-column reference table renders from the same KEYPAD_COLUMNS the
+  // solver uses.
+  ...getKeypadsManualPages(),
   // Simon Says: CANONICAL content from the module's getManualPages() (Story 7.2)
   // — both translation tables (vowel/no-vowel × 3 strike rows) render from the
   // same SIMON_TABLES the solver reads.
@@ -57,10 +64,19 @@ export const DEV_MANUAL_PAGES: ManualPage[] = [
   // (Story 7.1) — the cut-code legend + 16-row truth table render from the same
   // COMPLICATED_WIRES_TABLE the solver evaluates.
   ...getComplicatedWiresManualPages(),
-  stub('wire-sequences', 'Wire Sequences'),
-  stub('whos-on-first', "Who's on First"),
+  // Wire Sequences: CANONICAL content from the module's getManualPages()
+  // (Story 6.3) — the three colour occurrence tables render from the same
+  // CUT_RULES the reducer reads.
+  ...getWireSequencesManualPages(),
+  // Who's on First: CANONICAL content from the module's getManualPages()
+  // (Story 6.2) — both the Step-1 display→position grid and the Step-2 label
+  // priority lists render from the same tables the solver reads.
+  ...getWhosOnFirstManualPages(),
   // Passwords: CANONICAL content from the module's getManualPages() (Story 5.5)
   // — the 35-word list renders from the same PASSWORD_WORDS the solver checks.
   ...getPasswordsManualPages(),
-  stub('mazes', 'Mazes'),
+  // Mazes: CANONICAL content from the module's getManualPages() (Story 6.4) —
+  // all 9 maze diagrams (walls + markers) render from the same MAZE_LAYOUTS the
+  // reducer reads, via the additive ManualSection.mazes structured field.
+  ...getMazesManualPages(),
 ];

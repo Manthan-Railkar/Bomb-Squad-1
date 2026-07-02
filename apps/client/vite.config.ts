@@ -25,5 +25,8 @@ export default defineConfig({
     // isolation already prevents cross-file leakage; this covers within-file.)
     restoreMocks: true,
     unstubGlobals: true,
+    // Playwright owns e2e/ (its *.spec.ts import @playwright/test) — Vitest
+    // must not collect them (TD-6). Everything Vitest runs lives under src/.
+    exclude: ['e2e/**', '**/node_modules/**', '**/dist/**'],
   },
 });

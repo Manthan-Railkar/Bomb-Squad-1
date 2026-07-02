@@ -88,10 +88,10 @@ describe('generateRoundBombs — AC2 frozen context flows through module generat
 
 describe('generateRoundBombs — fail-loud config guards (no partial writes)', () => {
   it('rejects an unregistered pool id before producing any bomb', () => {
-    // 'keypads' (Epic 6, Story 6.1 — backlog) has no registered generator yet —
-    // every Epic 7 Hard module (through morse-code, 7.4) is now registered, so
-    // the unregistered-id example moves to the next planned id in MODULE_IDS.
-    expect(() => generateRoundBombs('s', 1, config({ modulePool: ['keypads'] }), TEAMS)).toThrow(
+    // Every canonical MODULE_IDS entry is registered (Epics 5–7 complete), so
+    // the unregistered-id example is a synthetic sentinel that can never gain
+    // a generator — the guard is about unknown ids, not unshipped modules.
+    expect(() => generateRoundBombs('s', 1, config({ modulePool: ['not-a-module'] }), TEAMS)).toThrow(
       /unregistered id/,
     );
   });

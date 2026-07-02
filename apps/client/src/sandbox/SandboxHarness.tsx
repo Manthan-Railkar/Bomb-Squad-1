@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useGameStore } from '../store/gameStore.js';
 import BombStage from '../scenes/BombStage.js';
+import { E2eSceneHook } from '../scenes/E2eSceneHook.js';
 import { DEV_BOMB_CONTEXT } from '../scenes/devBombContext.js';
 import { SANDBOX_MODULES } from '../modules/index.js';
 import { getModuleRenderer } from '../modules/registry.js';
@@ -88,6 +89,8 @@ export default function SandboxHarness() {
           <ambientLight intensity={0.7} />
           <directionalLight position={[2, 3, 4]} intensity={1.1} />
           {mod && Renderer ? <Renderer.DefuserView moduleIndex={0} /> : null}
+          {/* e2e projection hook (TD-6) — dev builds only, registration not logic. */}
+          {import.meta.env.DEV ? <E2eSceneHook /> : null}
         </Canvas>
       </BombStage>
 

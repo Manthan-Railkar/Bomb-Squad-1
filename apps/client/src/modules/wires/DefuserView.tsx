@@ -126,7 +126,8 @@ export function WiresDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
               {WIRE_COLOR_LABELS[wire.color]}
             </Text>
 
-            <group position={[WIRE_X, 0, 0]} {...cut}>
+            {/* name = e2e projection target (TD-6); module-scoped, render-only. */}
+            <group name={`m${moduleIndex}-wire-${wireIndex}`} position={[WIRE_X, 0, 0]} {...cut}>
               {severed ? (
                 <>
                   {/* Severed: two drooping stubs with a visible gap (cylinder

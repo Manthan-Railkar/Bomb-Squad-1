@@ -4,6 +4,10 @@ import {
   WIRES_MODULE_ID,
   BUTTON_MODULE_ID,
   PASSWORDS_MODULE_ID,
+  KEYPADS_MODULE_ID,
+  WHOS_ON_FIRST_MODULE_ID,
+  WIRE_SEQUENCES_MODULE_ID,
+  MAZES_MODULE_ID,
   COMPLICATED_WIRES_MODULE_ID,
   SIMON_SAYS_MODULE_ID,
   MEMORY_MODULE_ID,
@@ -13,6 +17,13 @@ import {
   generateDevDemo,
   generateWires,
   solveWires,
+  generateKeypads,
+  solutionOrder,
+  generateWhosOnFirst,
+  solutionIndex,
+  generateWireSequences,
+  flattenWires,
+  shouldCut,
   correctFreqIndex,
   type BombContext,
   type BombState,
@@ -22,6 +33,10 @@ import {
   type ModuleState,
   type MorseCodeState,
   type PasswordsState,
+  type KeypadsState,
+  type WhosOnFirstState,
+  type WireSequencesState,
+  type MazesState,
   type SimonSaysState,
 } from '@bomb-squad/shared';
 import { createBombReducer, bombReducer } from '../bombReducer.js';
@@ -356,6 +371,155 @@ describe('open/closed module registration (AC2)', () => {
     expect(struck.modules[0].status).toBe('armed'); // transient 'struck' rolled up
     expect(struck.strikes).toBe(1);
     expect((struck.modules[0].data as MorseCodeState).freqIndex).toBe(wrongIdx); // dial preserved
+  });
+
+  it('keypads (6.1) is registered and solves/strikes through the untouched bomb reducer', () => {
+    expect(MODULE_REDUCERS[KEYPADS_MODULE_ID]).toBeDefined();
+    // Recompute the press order from the public column table (no stored answer).
+    const data: KeypadsState = generateKeypads(7);
+    const order = solutionOrder(data.keys);
+    const keypadsBomb: BombState = {
+      context: CTX,
+      modules: [{ moduleId: KEYPADS_MODULE_ID, status: 'armed', data }],
+      strikes: 0,
+      solved: false,
+    };
+    // Press all four in order → solved with no strike.
+    let solved: BombState = keypadsBomb;
+    for (const keyIndex of order) {
+      solved = bombReducer(solved, { type: 'MODULE_ACTION', moduleIndex: 0, payload: { type: 'PRESS', keyIndex } });
+    }
+    expect(solved.modules[0].status).toBe('solved');
+    expect(solved.strikes).toBe(0);
+    // An out-of-order first press rolls up into a team strike and re-arms.
+    const wrongFirst = order[1]; // not the expected first press
+    const struck = bombReducer(keypadsBomb, {
+      type: 'MODULE_ACTION',
+      moduleIndex: 0,
+      payload: { type: 'PRESS', keyIndex: wrongFirst },
+    });
+    expect(struck.modules[0].status).toBe('armed'); // transient 'struck' rolled up
+    expect(struck.strikes).toBe(1);
+  });
+
+  it('whos-on-first (6.2) is registered and solves/strikes through the untouched bomb reducer', () => {
+    expect(MODULE_REDUCERS[WHOS_ON_FIRST_MODULE_ID]).toBeDefined();
+    // Recompute the solution from the public tables (no stored answer).
+    const data: WhosOnFirstState = generateWhosOnFirst(7);
+    const sol = solutionIndex(data);
+    const wofBomb: BombState = {
+      context: CTX,
+      modules: [{ moduleId: WHOS_ON_FIRST_MODULE_ID, status: 'armed', data }],
+      strikes: 0,
+      solved: false,
+    };
+    // Pressing the solution button → solved with no strike.
+    const solved = bombReducer(wofBomb, {
+      type: 'MODULE_ACTION',
+      moduleIndex: 0,
+      payload: { type: 'PRESS', buttonIndex: sol },
+    });
+    expect(solved.modules[0].status).toBe('solved');
+    expect(solved.strikes).toBe(0);
+    // A wrong button rolls up into a team strike and re-arms.
+    const struck = bombReducer(wofBomb, {
+      type: 'MODULE_ACTION',
+      moduleIndex: 0,
+      payload: { type: 'PRESS', buttonIndex: (sol + 1) % 6 },
+    });
+    expect(struck.modules[0].status).toBe('armed'); // transient 'struck' rolled up
+    expect(struck.strikes).toBe(1);
+    // Purity: both dispatches reused the same input bomb — it must be untouched.
+    expect(wofBomb.modules[0].status).toBe('armed');
+    expect(wofBomb.strikes).toBe(0);
+  });
+
+  it('wire-sequences (6.3) is registered and solves/strikes through the untouched bomb reducer', () => {
+    expect(MODULE_REDUCERS[WIRE_SEQUENCES_MODULE_ID]).toBeDefined();
+    // Recompute cut decisions from the public panels + CUT_RULES (no stored answer).
+    const data: WireSequencesState = generateWireSequences(7);
+    const flat = flattenWires(data);
+    const shouldCutIndices = flat.filter((f) => shouldCut(data, f.globalIndex)).map((f) => f.globalIndex);
+    // Generation only guarantees ≥1 should-CUT wire; a should-not-cut wire is a
+    // property of THIS seed's shape — pin it explicitly so a generator change
+    // fails here with a clear message, not a TypeError on the dereference.
+    const shouldNotCutWire = flat.find((f) => !shouldCut(data, f.globalIndex));
+    expect(shouldNotCutWire).toBeDefined();
+    const shouldNotCutIndex = shouldNotCutWire!.globalIndex;
+    const wsBomb: BombState = {
+      context: CTX,
+      modules: [{ moduleId: WIRE_SEQUENCES_MODULE_ID, status: 'armed', data }],
+      strikes: 0,
+      solved: false,
+    };
+    // Cut every should-cut wire in order → solved only once the last one is severed.
+    let solved: BombState = wsBomb;
+    shouldCutIndices.forEach((wireIndex, i) => {
+      solved = bombReducer(solved, { type: 'MODULE_ACTION', moduleIndex: 0, payload: { type: 'CUT', wireIndex } });
+      const expected = i === shouldCutIndices.length - 1 ? 'solved' : 'armed';
+      expect(solved.modules[0].status).toBe(expected);
+    });
+    expect(solved.strikes).toBe(0);
+    // A should-not-cut wire rolls up into a team strike and re-arms.
+    const struck = bombReducer(wsBomb, {
+      type: 'MODULE_ACTION',
+      moduleIndex: 0,
+      payload: { type: 'CUT', wireIndex: shouldNotCutIndex },
+    });
+    expect(struck.modules[0].status).toBe('armed'); // transient 'struck' rolled up
+    expect(struck.strikes).toBe(1);
+    // Purity: the input bomb is untouched across dispatches.
+    expect(wsBomb.modules[0].status).toBe('armed');
+    expect(wsBomb.strikes).toBe(0);
+  });
+
+  it('mazes (6.4) is registered and solves/strikes through the untouched bomb reducer', () => {
+    expect(MODULE_REDUCERS[MAZES_MODULE_ID]).toBeDefined();
+    // Fixed instance (maze 0): from (0,0) a 'down' move is legal and reaches the
+    // target (0,1) → solved; from (0,1) a 'right' move crosses wall '0,1|1,1' → strike.
+    const data: MazesState = {
+      mazeId: 0,
+      start: { x: 0, y: 0 },
+      position: { x: 0, y: 0 },
+      target: { x: 0, y: 1 },
+    };
+    const mazeBomb: BombState = {
+      context: CTX,
+      modules: [{ moduleId: MAZES_MODULE_ID, status: 'armed', data }],
+      strikes: 0,
+      solved: false,
+    };
+    // Legal MOVE down → reaches the target → solved.
+    const solved = bombReducer(mazeBomb, {
+      type: 'MODULE_ACTION',
+      moduleIndex: 0,
+      payload: { type: 'MOVE', direction: 'down' },
+    });
+    expect(solved.modules[0].status).toBe('solved');
+    expect(solved.strikes).toBe(0);
+    // Illegal MOVE into a wall rolls up into a team strike and re-arms; light stays put.
+    const intoWall: BombState = {
+      context: CTX,
+      modules: [
+        {
+          moduleId: MAZES_MODULE_ID,
+          status: 'armed',
+          data: { mazeId: 0, start: { x: 0, y: 1 }, position: { x: 0, y: 1 }, target: { x: 5, y: 5 } },
+        },
+      ],
+      strikes: 0,
+      solved: false,
+    };
+    const struck = bombReducer(intoWall, {
+      type: 'MODULE_ACTION',
+      moduleIndex: 0,
+      payload: { type: 'MOVE', direction: 'right' },
+    });
+    expect(struck.modules[0].status).toBe('armed'); // transient 'struck' rolled up
+    expect(struck.strikes).toBe(1);
+    expect((struck.modules[0].data as MazesState).position).toEqual({ x: 0, y: 1 });
+    // Purity: the input bomb is untouched.
+    expect(mazeBomb.modules[0].status).toBe('armed');
   });
 
   it('dev-demo is registered in the production MODULE_REDUCERS map', () => {

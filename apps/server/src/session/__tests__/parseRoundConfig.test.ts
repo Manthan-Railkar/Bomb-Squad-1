@@ -74,10 +74,12 @@ describe('parseRoundConfig — range and shape validation', () => {
   });
 
   it('rejects a modulePool id with no registered generator', () => {
-    const res = parseRoundConfig({ ...fullConfig, modulePool: ['keypads'] }, { full: true });
+    // Every canonical MODULE_IDS entry is registered (Epics 5–7 complete), so
+    // the un-generatable example is a synthetic sentinel that can never gain one.
+    const res = parseRoundConfig({ ...fullConfig, modulePool: ['not-a-module'] }, { full: true });
     expect(res.ok).toBe(false);
     if (res.ok) return;
-    expect(res.message).toMatch(/keypads/);
+    expect(res.message).toMatch(/not-a-module/);
   });
 
   it('rejects a non-object config', () => {

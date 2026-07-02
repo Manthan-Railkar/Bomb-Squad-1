@@ -128,12 +128,17 @@ describe('RoundConfigPanel — emits ROUND_CONFIGURE', () => {
 });
 
 describe('RoundConfigPanel — module pool override', () => {
-  it('disables un-implemented modules and enables the generatable trio', () => {
-    seed({ config: { difficulty: 'medium' } });
+  it('enables every module in the pool now that the full catalog is generatable', () => {
+    // Epics 5–7 are complete: every canonical module has a generator, so the
+    // Hard catalog surfaces no disabled chips. (The disabled-chip mechanic —
+    // catalog ∩ generators — stays covered by the un-generatable pool guard in
+    // parseRoundConfig, which uses a synthetic never-registered sentinel.)
+    seed({ config: { difficulty: 'hard' } });
     render(<RoundConfigPanel />);
     const pool = screen.getByRole('group', { name: 'Module pool' });
-    // Keypads (no generator yet) is present but disabled.
-    expect(within(pool).getByRole('button', { name: 'Keypads' })).toBeDisabled();
+    // The former last generator-less examples are now enabled.
+    expect(within(pool).getByRole('button', { name: 'Complicated Wires' })).toBeEnabled();
+    expect(within(pool).getByRole('button', { name: 'Mazes' })).toBeEnabled();
     // Wires (generatable, in the default pool) is enabled and pressed.
     const wires = within(pool).getByRole('button', { name: 'Wires' });
     expect(wires).toBeEnabled();

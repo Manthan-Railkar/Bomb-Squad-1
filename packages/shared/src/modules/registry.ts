@@ -4,6 +4,10 @@ import { DEV_DEMO_MODULE_ID } from './dev-demo/types.js';
 import { WIRES_MODULE_ID } from './wires/types.js';
 import { BUTTON_MODULE_ID } from './the-button/types.js';
 import { PASSWORDS_MODULE_ID } from './passwords/types.js';
+import { KEYPADS_MODULE_ID } from './keypads/types.js';
+import { WHOS_ON_FIRST_MODULE_ID } from './whos-on-first/types.js';
+import { WIRE_SEQUENCES_MODULE_ID } from './wire-sequences/types.js';
+import { MAZES_MODULE_ID } from './mazes/types.js';
 import { COMPLICATED_WIRES_MODULE_ID } from './complicated-wires/types.js';
 import { SIMON_SAYS_MODULE_ID } from './simon-says/types.js';
 import { MEMORY_MODULE_ID } from './memory/types.js';
@@ -15,6 +19,10 @@ import { generateDevDemo } from './dev-demo/generate.js';
 import { generateWires } from './wires/generate.js';
 import { generateButton } from './the-button/generate.js';
 import { generatePasswords } from './passwords/generate.js';
+import { generateKeypads } from './keypads/generate.js';
+import { generateWhosOnFirst } from './whos-on-first/generate.js';
+import { generateWireSequences } from './wire-sequences/generate.js';
+import { generateMazes } from './mazes/generate.js';
 import { generateComplicatedWires } from './complicated-wires/generate.js';
 import { generateSimonSays } from './simon-says/generate.js';
 import { generateMemory } from './memory/generate.js';
@@ -58,6 +66,22 @@ export const MODULE_GENERATORS: Record<string, ModuleGenerator> = {
   // (Wires/Button/Passwords). Generator + reducer + tier-pool entry land
   // together (same generateLayout requirement as above).
   [PASSWORDS_MODULE_ID]: generatePasswords as ModuleGenerator,
+  // keypads: Story 6.1 — first MEDIUM-tier module. Generator + reducer + a
+  // medium/hard tier-pool entry land together (a pool may only list modules with
+  // both a generator and a reducer, or generateLayout throws at ROUND_START).
+  [KEYPADS_MODULE_ID]: generateKeypads as ModuleGenerator,
+  // whos-on-first: Story 6.2 — second MEDIUM-tier module. Generator + reducer + a
+  // medium/hard tier-pool entry land together (same generateLayout requirement).
+  [WHOS_ON_FIRST_MODULE_ID]: generateWhosOnFirst as ModuleGenerator,
+  // wire-sequences: Story 6.3 — third MEDIUM-tier module (first stateful one).
+  // Generator + reducer + a medium/hard tier-pool entry land together (same
+  // generateLayout requirement). Takes seed alone (no bomb-context rule).
+  [WIRE_SEQUENCES_MODULE_ID]: generateWireSequences as ModuleGenerator,
+  // mazes: Story 6.4 — fourth (and last) MEDIUM-tier module; first module with a
+  // 2D navigable board. Generator + reducer + a medium/hard tier-pool entry land
+  // together (same generateLayout requirement). Takes seed alone (no
+  // bomb-context rule). Completes the Medium tier (TIER_POOLS.medium == catalog).
+  [MAZES_MODULE_ID]: generateMazes as ModuleGenerator,
   // complicated-wires: Story 7.1 — first Hard-tier module. Generator + reducer +
   // a hard tier-pool entry land together (a pool may only list modules with both,
   // or generateLayout throws at ROUND_START). Per-wire attribute→code truth table
@@ -127,14 +151,21 @@ export type ModuleId = (typeof MODULE_IDS)[number];
  */
 export const TIER_POOLS: Record<DifficultyTier, readonly string[]> = {
   easy: ['wires', 'the-button', 'passwords'],
-  medium: ['wires', 'the-button', 'passwords'],
-  // complicated-wires (7.1) is the first Hard-only module — added to `hard` alone
-  // (leave easy/medium untouched; a Hard module is not a superset member of the
-  // easier tiers). This flips 8.1's dashboard chip from disabled to selectable.
+  // keypads/whos-on-first/wire-sequences/mazes (6.1–6.4) are the Medium tier —
+  // each joins medium AND hard (hard ⊇ medium). mazes completes the Medium tier,
+  // so TIER_POOLS.medium now equals TIER_CATALOG.medium. Easy stays the trio.
+  medium: ['wires', 'the-button', 'passwords', 'keypads', 'whos-on-first', 'wire-sequences', 'mazes'],
+  // complicated-wires/simon-says/memory/morse-code (7.1–7.4) are Hard-only —
+  // added to `hard` alone (a Hard module is not a superset member of the easier
+  // tiers). morse-code completes Epic 7, so TIER_POOLS.hard == TIER_CATALOG.hard.
   hard: [
     'wires',
     'the-button',
     'passwords',
+    'keypads',
+    'whos-on-first',
+    'wire-sequences',
+    'mazes',
     'complicated-wires',
     'simon-says',
     'memory',

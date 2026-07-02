@@ -9,12 +9,15 @@
     "build": "pnpm -r build",
     "dev": "pnpm -r --parallel dev",
     "test": "pnpm -r test",
+    "e2e": "pnpm --filter @bomb-squad/client e2e",
     "prepare": "husky"
   },
   "devDependencies": {
     "husky": "^9.0.0"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

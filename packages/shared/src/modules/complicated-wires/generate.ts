@@ -1,7 +1,7 @@
 import type { BombContext } from '../../types/index.js';
 import { makeSeededRng } from '../../seeding/index.js';
 import type { ComplicatedWiresState, ComplicatedWire, WireAttributes } from './types.js';
-import { shouldCut } from './solve.js';
+import { complicatedWiresShouldCut } from './solve.js';
 
 /**
  * Pure, seeded instance generator — the ONLY place randomness is allowed in a
@@ -46,7 +46,7 @@ export function generateComplicatedWires(seed: number, ctx: BombContext): Compli
     wires = Array.from({ length: wireCount }, () => ({ attrs: rollAttrs(), cut: false }));
     // Re-roll (from the same seeded stream) until the layout is live: at least
     // one wire must be a should-cut wire, so the module is never born solved.
-    ok = wires.some((w) => shouldCut(w.attrs, ctx));
+    ok = wires.some((w) => complicatedWiresShouldCut(w.attrs, ctx));
   }
   if (!ok) {
     throw new Error(

@@ -1,0 +1,67 @@
+import type { ManualPage, ManualSection } from '@bomb-squad/shared';
+import { getMazesManualPages } from '@bomb-squad/shared';
+import { MazeDiagram } from '../../manual/MazeDiagram.js';
+
+/**
+ * Minimal typed renderer of the module's structured manual data (contract
+ * file). The real paper-styled manual viewer (Story 5.2) consumes the same
+ * getManualPages() output — modules never author markup, only data. The maze
+ * diagrams reuse the shared MazeDiagram (same component PageRenderer uses) so
+ * the two renders cannot diverge.
+ */
+
+function Section({ section }: { section: ManualSection }) {
+  return (
+    <section className="space-y-2">
+      {section.heading ? <h3 className="font-semibold">{section.heading}</h3> : null}
+      {section.content ? <p>{section.content}</p> : null}
+      {section.table ? (
+        <table className="border-collapse text-left">
+          <thead>
+            <tr>
+              {section.table.headers.map((h, i) => (
+                <th key={i} className="border border-current px-2 py-1">
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {section.table.rows.map((row, i) => (
+              <tr key={i}>
+                {row.map((cell, j) => (
+                  <td key={j} className="border border-current px-2 py-1">
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+      {section.maze ? <MazeDiagram maze={section.maze} /> : null}
+      {section.mazes ? (
+        <div className="flex flex-wrap gap-4">
+          {section.mazes.map((maze, i) => (
+            <MazeDiagram key={i} maze={maze} />
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+export function MazesManualPages() {
+  return (
+    <div className="space-y-6">
+      {getMazesManualPages().map((page: ManualPage) => (
+        <article key={page.chapterId} className="space-y-3">
+          <h2 className="text-lg font-semibold">{page.chapterTitle}</h2>
+          {page.sections.map((section, i) => (
+            <Section key={i} section={section} />
+          ))}
+        </article>
+      ))}
+    </div>
+  );
+}

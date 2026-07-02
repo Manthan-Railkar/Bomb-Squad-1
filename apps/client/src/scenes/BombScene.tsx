@@ -11,6 +11,7 @@ import { TimerLcd } from './TimerLcd.js';
 import { StrikeIndicator } from './StrikeIndicator.js';
 import { DEV_BOMB_CONTEXT } from './devBombContext.js';
 import { DEV_PLACEHOLDER_MODULES } from './devBombState.js';
+import { E2eSceneHook } from './E2eSceneHook.js';
 import { isTextEntryTarget, prefersReducedMotion } from './dom.js';
 
 /**
@@ -202,6 +203,9 @@ export default function BombScene({ typesOnly = false, modules: prepModules }: B
 
       {/* AC-3 verification aid: live FPS/ms panel, opt-in via ?stats (dev only). */}
       {SHOW_STATS && <Stats />}
+
+      {/* e2e projection hook (TD-6) — dev builds only, registration not logic. */}
+      {import.meta.env.DEV ? <E2eSceneHook /> : null}
     </Canvas>
   );
 }

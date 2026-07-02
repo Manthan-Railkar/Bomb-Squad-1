@@ -2,7 +2,7 @@
 export {
   COMPLICATED_WIRES_TABLE,
   codeForAttributes,
-  shouldCut,
+  complicatedWiresShouldCut,
   serialLastDigitEven,
   type CutCode,
   type ComplicatedWiresRow,
