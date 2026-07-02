@@ -137,8 +137,9 @@ export const ModuleBay = memo(function ModuleBay({
         <meshStandardMaterial color="#0C0B0E" />
       </mesh>
 
-      {/* Faceplate — --color-graphite #1A1A1F; carries the click-to-focus contract */}
-      <mesh position={[0, 0, PLATE_Z]} onClick={onClick}>
+      {/* Faceplate — --color-graphite #1A1A1F; carries the click-to-focus contract.
+          name = e2e projection target (TD-6); data-driven, render-only. */}
+      <mesh name={`bay-${slot.moduleIndex}`} position={[0, 0, PLATE_Z]} onClick={onClick}>
         <boxGeometry args={PLATE_SIZE} />
         <meshStandardMaterial color="#1A1A1F" />
       </mesh>

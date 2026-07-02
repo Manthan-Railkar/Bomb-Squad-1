@@ -82,3 +82,7 @@ coverage/
 # Temp
 tmp/
 temp/
+
+# Playwright (TD-6 e2e harness)
+test-results/
+playwright-report/

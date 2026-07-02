@@ -15,87 +15,14 @@
  * @bomb-squad/server is a DEV dependency used only here; nothing in the shipped
  * tool (main.ts / swarm.ts / BotClient.ts) imports it.
  */
-import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { Server as SocketIOServer } from 'socket.io';
-import {
-  registerSessionHandlers,
-  type SessionIOServer,
-  type SessionLog,
-} from '@bomb-squad/server/src/handlers/sessionHandlers.js';
-import { registerModuleHandlers } from '@bomb-squad/server/src/handlers/moduleHandlers.js';
-import { createTimerScheduler } from '@bomb-squad/server/src/timer/index.js';
-import type { RedisStore, UpdateDecision } from '@bomb-squad/server/src/state/redis.js';
+import { bootTestServer } from '@bomb-squad/server/src/testing/bootTestServer.js';
 import { isRelayComplete } from '@bomb-squad/shared';
 import { buildAutonomousSwarm, playRound, teardown } from './swarm.js';
 
-const noopLog: SessionLog = { info: () => {}, error: () => {} };
-
-/** Single-process Map-backed RedisStore (mirrors the server test harness). */
-function memoryRedis(): RedisStore {
-  const data = new Map<string, string>();
-  return {
-    async getJSON<T>(key: string): Promise<T | null> {
-      const raw = data.get(key);
-      return raw === undefined ? null : (JSON.parse(raw) as T);
-    },
-    async setJSON<T>(key: string, value: T): Promise<void> {
-      data.set(key, JSON.stringify(value));
-    },
-    async del(key: string): Promise<void> {
-      data.delete(key);
-    },
-    async updateJSON<T, R>(
-      key: string,
-      mutate: (current: T | null) => UpdateDecision<T, R>,
-    ): Promise<{ committed: boolean; result: R }> {
-      const before = data.get(key);
-      const current = before === undefined ? null : (JSON.parse(before) as T);
-      const decision = mutate(current);
-      if (!decision.commit) return { committed: false, result: decision.result };
-      data.set(key, JSON.stringify(decision.value));
-      return { committed: true, result: decision.result };
-    },
-    async ping(): Promise<boolean> {
-      return true;
-    },
-    isReady(): boolean {
-      return true;
-    },
-  };
-}
-
-async function boot(): Promise<{ url: string; close: () => Promise<void> }> {
-  const httpServer = createServer();
-  const io = new SocketIOServer(httpServer) as unknown as SessionIOServer;
-  const redis = memoryRedis();
-  const timer = createTimerScheduler({
-    redis,
-    io,
-    log: noopLog,
-    // unref so an armed wake never keeps the verify process alive.
-    setTimer: (cb, ms) => setTimeout(cb, ms).unref(),
-    clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
-  });
-  // No-op session-end archive (Story 8.10): the sim never touches real Postgres;
-  // SESSION_END just flips the phase and the archive resolves to nothing.
-  const archive = {
-    async ping() {
-      return true;
-    },
-    async ensureSchema() {},
-    async archiveSession() {},
-    async close() {},
-  };
-  registerSessionHandlers(io, { redis, log: noopLog, timer, archive });
-  registerModuleHandlers(io, { redis, log: noopLog, timer, archive });
-  await new Promise<void>((resolve) => httpServer.listen(0, resolve));
-  const { port } = httpServer.address() as AddressInfo;
-  return {
-    url: `http://127.0.0.1:${port}`,
-    close: () => new Promise<void>((resolve) => io.close(() => resolve())),
-  };
-}
+// The in-process boot (real handlers + real scheduler over memory Redis) was
+// extracted to @bomb-squad/server/src/testing/bootTestServer.ts (Story TD-6) so
+// the Playwright e2e suite shares the exact same server this harness proved.
+const boot = () => bootTestServer();
 
 let failures = 0;
 function check(label: string, ok: boolean): void {

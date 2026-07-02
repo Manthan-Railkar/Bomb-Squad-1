@@ -20,6 +20,11 @@ import { CONNECTING } from './ui/copy.js';
 import DevBombHarness from './scenes/DevBombHarness.js';
 import SandboxHarness from './sandbox/SandboxHarness.js';
 import DevManualHarness from './manual/DevManualHarness.js';
+import { registerE2eStateHook } from './scenes/E2eSceneHook.js';
+
+// e2e state hook (TD-6) — dev builds only; registration, not logic. Canvas-
+// independent so Playwright waits can read session status across surface swaps.
+if (import.meta.env.DEV) registerE2eStateHook();
 
 // Production builds are served through Caddy, which proxies /socket.io/* to
 // the game server — same-origin works on any domain without baking a URL into

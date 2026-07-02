@@ -79,7 +79,8 @@ export function WhosOnFirstDefuserView({ moduleIndex }: ModuleDefuserViewProps) 
           dispatchModuleAction(moduleIndex, { type: 'PRESS', buttonIndex }),
         );
         return (
-          <group key={buttonIndex} position={[x, y, 0.02]} {...press}>
+          // name = e2e projection target (TD-6); module-scoped, render-only.
+          <group key={buttonIndex} name={`m${moduleIndex}-wof-button-${buttonIndex}`} position={[x, y, 0.02]} {...press}>
             <mesh>
               <boxGeometry args={[BTN_W, BTN_H, 0.03]} />
               <meshStandardMaterial color={CAP} />

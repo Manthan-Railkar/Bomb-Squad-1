@@ -136,7 +136,8 @@ export function WireSequencesDefuserView({ moduleIndex }: ModuleDefuserViewProps
               {wire.letter}
             </Text>
 
-            <group position={[WIRE_X, 0, 0]} {...cut}>
+            {/* name = e2e projection target (TD-6); module-scoped GLOBAL index, render-only. */}
+            <group name={`m${moduleIndex}-wseq-wire-${globalIndex}`} position={[WIRE_X, 0, 0]} {...cut}>
               {severed ? (
                 <>
                   <mesh position={[-WIRE_LENGTH / 4, -0.01, 0]} rotation={[0, 0, Math.PI / 2 - 0.25]}>
@@ -170,7 +171,8 @@ export function WireSequencesDefuserView({ moduleIndex }: ModuleDefuserViewProps
         ['up', 0.08, '▲'],
         ['down', -0.08, '▼'],
       ] as const).map(([direction, y, glyph]) => (
-        <group key={direction} position={[NAV_X, y, 0.02]} {...nav(direction)}>
+        // name = e2e projection target (TD-6); module-scoped, render-only.
+        <group key={direction} name={`m${moduleIndex}-wseq-nav-${direction}`} position={[NAV_X, y, 0.02]} {...nav(direction)}>
           <mesh>
             <boxGeometry args={[0.1, 0.1, 0.03]} />
             <meshStandardMaterial color={NAV_CAP} />

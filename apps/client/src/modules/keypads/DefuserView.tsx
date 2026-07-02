@@ -79,7 +79,8 @@ export function KeypadsDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
           dispatchModuleAction(moduleIndex, { type: 'PRESS', keyIndex }),
         );
         return (
-          <group key={keyIndex} position={[x, y, 0.02]} {...press}>
+          // name = e2e projection target (TD-6); module-scoped, render-only.
+          <group key={keyIndex} name={`m${moduleIndex}-key-${keyIndex}`} position={[x, y, 0.02]} {...press}>
             <mesh>
               <boxGeometry args={[KEY_SIZE, KEY_SIZE, 0.03]} />
               <meshStandardMaterial color={lit ? CAP_LIT : CAP} />
