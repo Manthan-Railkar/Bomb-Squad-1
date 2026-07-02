@@ -33,12 +33,27 @@ export function generateComplicatedWires(seed: number, ctx: BombContext): Compli
     led: rng() < 0.5,
   });
 
-  let wires: ComplicatedWire[];
-  do {
+  // A live layout is always reachable — code C rows are should-cut under every
+  // ctx and rollAttrs is uniform over all 16 combos — so this terminates near
+  // instantly. The cap is defensive: if the COMPLICATED_WIRES_TABLE were ever
+  // edited to drop every unconditional-cut row, this synchronous loop (run
+  // inside generateLayout at ROUND_START) would otherwise hang the server / the
+  // test suite silently. Fail loud at generation time instead.
+  const MAX_REROLLS = 100;
+  let wires: ComplicatedWire[] = [];
+  let ok = false;
+  for (let i = 0; i < MAX_REROLLS && !ok; i++) {
     wires = Array.from({ length: wireCount }, () => ({ attrs: rollAttrs(), cut: false }));
     // Re-roll (from the same seeded stream) until the layout is live: at least
     // one wire must be a should-cut wire, so the module is never born solved.
-  } while (!wires.some((w) => shouldCut(w.attrs, ctx)));
+    ok = wires.some((w) => shouldCut(w.attrs, ctx));
+  }
+  if (!ok) {
+    throw new Error(
+      `generateComplicatedWires: no live layout after ${MAX_REROLLS} re-rolls ` +
+        `(seed=${seed}) — the cut-decision table has no should-cut row for this context`,
+    );
+  }
 
   return { wires, ctx };
 }

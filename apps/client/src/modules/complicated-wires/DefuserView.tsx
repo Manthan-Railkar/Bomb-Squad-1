@@ -41,11 +41,17 @@ const WIRE_X = 0.16; // wire centreline (attribute readout sits to its left)
 // Four attribute-token x positions, left of the wire.
 const TOKEN_X = [-0.34, -0.27, -0.2, -0.11] as const;
 
-/** Ordered attribute descriptors: [glyph-when-present, accessor]. */
+/**
+ * Ordered attribute descriptors: [label-when-present, accessor]. Labels are
+ * plain ASCII letter tokens (RS/BS/ST/LED) — the bundled jetbrains-mono-700
+ * WebGL font has no ★ (U+2605) glyph, so a symbol token would render as tofu
+ * and silently defeat the AC4 colourblind floor. 'ST' matches the manual's
+ * "Star" column and the RS/BS/LED convention.
+ */
 const ATTRS: ReadonlyArray<{ label: string; get: (a: WireAttributes) => boolean }> = [
   { label: 'RS', get: (a) => a.redStripe },
   { label: 'BS', get: (a) => a.blueStripe },
-  { label: '★', get: (a) => a.star },
+  { label: 'ST', get: (a) => a.star },
   { label: 'LED', get: (a) => a.led },
 ];
 
@@ -92,8 +98,11 @@ export function ComplicatedWiresDefuserView({ moduleIndex }: ModuleDefuserViewPr
               ? (mod.data as ComplicatedWiresState).wires[wireIndex]
               : undefined;
           const canChange = mod?.status !== 'solved' && liveWire?.cut === false;
+          // Don't emit a redundant CUT for an already-severed wire or a solved
+          // module — the reducer no-ops it, but there's no reason to send it.
+          if (!canChange) return;
           const dispatched = dispatchModuleAction(moduleIndex, { type: 'CUT', wireIndex });
-          if (dispatched && canChange) preFlash.mark(wireIndex);
+          if (dispatched) preFlash.mark(wireIndex);
         });
         return (
           <group key={wireIndex} position={[0, y, 0.02]}>
@@ -158,7 +167,9 @@ export function ComplicatedWiresDefuserView({ moduleIndex }: ModuleDefuserViewPr
                       <meshStandardMaterial color={BLUE_TINT} />
                     </mesh>
                   ) : null}
-                  {/* Star glyph sits on the wire when present. */}
+                  {/* Star mark sits on the wire when present (flavour only; the
+                      'ST' token carries the authoritative signal). Uses '*' — the
+                      bundled font has no ★ glyph and would render tofu. */}
                   {wire.attrs.star ? (
                     <Text
                       font="/fonts/jetbrains-mono-700.ttf"
@@ -168,7 +179,7 @@ export function ComplicatedWiresDefuserView({ moduleIndex }: ModuleDefuserViewPr
                       anchorY="middle"
                       position={[0, 0.035, 0.01]}
                     >
-                      ★
+                      *
                     </Text>
                   ) : null}
                 </>
