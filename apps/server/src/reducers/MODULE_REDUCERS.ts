@@ -6,6 +6,7 @@ import {
   COMPLICATED_WIRES_MODULE_ID,
   SIMON_SAYS_MODULE_ID,
   MEMORY_MODULE_ID,
+  MORSE_CODE_MODULE_ID,
   devDemoReducer,
   wiresReducer,
   buttonReducer,
@@ -13,6 +14,7 @@ import {
   complicatedWiresReducer,
   simonSaysReducer,
   memoryReducer,
+  morseCodeReducer,
   type ModuleState,
   type Reducer,
 } from '@bomb-squad/shared';
@@ -51,4 +53,8 @@ export const MODULE_REDUCERS: Record<string, ModuleReducer> = {
   // wrong press resets to stage 1 (not a per-stage retry) and rolls up a strike.
   // No live bomb state, so no MODULE_INTERACT enrichment is needed.
   [MEMORY_MODULE_ID]: memoryReducer as ModuleReducer,
+  // morse-code: Story 7.4 — the last Hard module. A flashed word decoded to a
+  // frequency; the dial + TX solve (wrong TX = strike, dial preserved). No live
+  // bomb state, so no MODULE_INTERACT enrichment is needed (like memory).
+  [MORSE_CODE_MODULE_ID]: morseCodeReducer as ModuleReducer,
 };

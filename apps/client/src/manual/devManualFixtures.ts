@@ -6,6 +6,7 @@ import {
   getComplicatedWiresManualPages,
   getSimonSaysManualPages,
   getMemoryManualPages,
+  getMorseCodeManualPages,
 } from '@bomb-squad/shared';
 
 /**
@@ -48,7 +49,10 @@ export const DEV_MANUAL_PAGES: ManualPage[] = [
   // Its five stage tables + intro make it the longest chapter here, so it still
   // exercises per-chapter scroll memory (AC2) — the intent of the old fixture.
   ...getMemoryManualPages(),
-  stub('morse-code', 'Morse Code'),
+  // Morse Code: CANONICAL content from the module's getManualPages() (Story 7.4)
+  // — the full Morse chart + the 16-row word→frequency table render from the same
+  // MORSE_ALPHABET / MORSE_TABLE constants the solver reads.
+  ...getMorseCodeManualPages(),
   // Complicated Wires: CANONICAL content from the module's getManualPages()
   // (Story 7.1) — the cut-code legend + 16-row truth table render from the same
   // COMPLICATED_WIRES_TABLE the solver evaluates.

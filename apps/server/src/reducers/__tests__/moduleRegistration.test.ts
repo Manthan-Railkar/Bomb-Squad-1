@@ -7,16 +7,20 @@ import {
   COMPLICATED_WIRES_MODULE_ID,
   SIMON_SAYS_MODULE_ID,
   MEMORY_MODULE_ID,
+  MORSE_CODE_MODULE_ID,
+  MORSE_FREQUENCIES,
   devDemoReducer,
   generateDevDemo,
   generateWires,
   solveWires,
+  correctFreqIndex,
   type BombContext,
   type BombState,
   type ButtonState,
   type ComplicatedWiresState,
   type MemoryState,
   type ModuleState,
+  type MorseCodeState,
   type PasswordsState,
   type SimonSaysState,
 } from '@bomb-squad/shared';
@@ -318,6 +322,42 @@ describe('open/closed module registration (AC2)', () => {
     expect((struck.modules[0].data as MemoryState).history).toEqual([]);
   });
 
+  it('morse-code (7.4) is registered: dial-to-frequency TX solves; wrong TX strikes, dial preserved', () => {
+    expect(MODULE_REDUCERS[MORSE_CODE_MODULE_ID]).toBeDefined();
+    // 'trick' transmits at 3.532 MHz (answer dial index 3). Start away from it.
+    const word = 'trick' as const;
+    const answer = correctFreqIndex(word);
+    const data: MorseCodeState = { word, freqIndex: 0, initialFreqIndex: 0 };
+    const bomb: BombState = {
+      context: CTX,
+      modules: [{ moduleId: MORSE_CODE_MODULE_ID, status: 'armed', data }],
+      strikes: 0,
+      solved: false,
+    };
+
+    // Step the dial up to the answer, then TX → solved with no strike.
+    let state = bomb;
+    for (let i = 0; i < answer; i++) {
+      state = bombReducer(state, { type: 'MODULE_ACTION', moduleIndex: 0, payload: { type: 'FREQ_UP' } });
+    }
+    expect((state.modules[0].data as MorseCodeState).freqIndex).toBe(answer);
+    const solved = bombReducer(state, { type: 'MODULE_ACTION', moduleIndex: 0, payload: { type: 'TX' } });
+    expect(solved.modules[0].status).toBe('solved');
+    expect(solved.strikes).toBe(0);
+
+    // A wrong TX (dial at a non-answer index) rolls up a team strike and re-arms,
+    // leaving the dial exactly where it was (no reset — the crux vs Memory).
+    const wrongIdx = (answer + 1) % MORSE_FREQUENCIES.length;
+    const atWrong: BombState = {
+      ...bomb,
+      modules: [{ moduleId: MORSE_CODE_MODULE_ID, status: 'armed', data: { ...data, freqIndex: wrongIdx } }],
+    };
+    const struck = bombReducer(atWrong, { type: 'MODULE_ACTION', moduleIndex: 0, payload: { type: 'TX' } });
+    expect(struck.modules[0].status).toBe('armed'); // transient 'struck' rolled up
+    expect(struck.strikes).toBe(1);
+    expect((struck.modules[0].data as MorseCodeState).freqIndex).toBe(wrongIdx); // dial preserved
+  });
+
   it('dev-demo is registered in the production MODULE_REDUCERS map', () => {
     expect(MODULE_REDUCERS[DEV_DEMO_MODULE_ID]).toBeDefined();
     const next = bombReducer(devDemoBomb('cut'), {
@@ -338,7 +378,7 @@ describe('module-reducer output guard (1.6 deferral closed in 5.1)', () => {
 
   it('rejects output that rebinds moduleId to another reducer', () => {
     const reduce = createBombReducer({
-      [DEV_DEMO_MODULE_ID]: rogue({ moduleId: 'morse-code', status: 'solved' }),
+      [DEV_DEMO_MODULE_ID]: rogue({ moduleId: 'keypads', status: 'solved' }),
     });
     const next = reduce(bomb, { type: 'MODULE_ACTION', moduleIndex: 0, payload: {} });
     expect(next).toBe(bomb); // state unchanged, no throw

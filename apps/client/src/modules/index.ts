@@ -6,6 +6,7 @@ import { PASSWORDS_MODULE } from './passwords/index.js';
 import { COMPLICATED_WIRES_MODULE } from './complicated-wires/index.js';
 import { SIMON_SAYS_MODULE } from './simon-says/index.js';
 import { MEMORY_MODULE } from './memory/index.js';
+import { MORSE_CODE_MODULE } from './morse-code/index.js';
 
 /**
  * Module registration barrel — importing it (main.tsx does, once) registers
@@ -26,6 +27,7 @@ export const SANDBOX_MODULES: readonly SandboxModule[] = [
   COMPLICATED_WIRES_MODULE as SandboxModule,
   SIMON_SAYS_MODULE as SandboxModule,
   MEMORY_MODULE as SandboxModule,
+  MORSE_CODE_MODULE as SandboxModule,
 ];
 
 export {
@@ -36,4 +38,5 @@ export {
   COMPLICATED_WIRES_MODULE,
   SIMON_SAYS_MODULE,
   MEMORY_MODULE,
+  MORSE_CODE_MODULE,
 };

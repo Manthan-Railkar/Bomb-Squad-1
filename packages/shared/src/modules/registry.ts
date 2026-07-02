@@ -7,6 +7,7 @@ import { PASSWORDS_MODULE_ID } from './passwords/types.js';
 import { COMPLICATED_WIRES_MODULE_ID } from './complicated-wires/types.js';
 import { SIMON_SAYS_MODULE_ID } from './simon-says/types.js';
 import { MEMORY_MODULE_ID } from './memory/types.js';
+import { MORSE_CODE_MODULE_ID } from './morse-code/types.js';
 // Import each generator directly from its own file, NOT via the module barrel
 // (./<mod>/index.js → ../index.js), so the registry never depends on the barrel
 // that parallel module stories edit.
@@ -17,6 +18,7 @@ import { generatePasswords } from './passwords/generate.js';
 import { generateComplicatedWires } from './complicated-wires/generate.js';
 import { generateSimonSays } from './simon-says/generate.js';
 import { generateMemory } from './memory/generate.js';
+import { generateMorseCode } from './morse-code/generate.js';
 
 /**
  * A module's seeded instance generator. `seed` is the per-(team,slot) moduleSeed
@@ -72,6 +74,11 @@ export const MODULE_GENERATORS: Record<string, ModuleGenerator> = {
   // entry land together (a pool may only list modules with both, or
   // generateLayout throws at ROUND_START).
   [MEMORY_MODULE_ID]: generateMemory as ModuleGenerator,
+  // morse-code: Story 7.4 — the LAST Hard module, completing Epic 7's pool. A
+  // flashed word decoded to a frequency; the dial + TX solve. No live bomb state
+  // (like memory). Generator + reducer + a Hard tier-pool entry land together (a
+  // pool may only list modules with both, or generateLayout throws at ROUND_START).
+  [MORSE_CODE_MODULE_ID]: generateMorseCode as ModuleGenerator,
 };
 
 /**
@@ -124,7 +131,15 @@ export const TIER_POOLS: Record<DifficultyTier, readonly string[]> = {
   // complicated-wires (7.1) is the first Hard-only module — added to `hard` alone
   // (leave easy/medium untouched; a Hard module is not a superset member of the
   // easier tiers). This flips 8.1's dashboard chip from disabled to selectable.
-  hard: ['wires', 'the-button', 'passwords', 'complicated-wires', 'simon-says', 'memory'],
+  hard: [
+    'wires',
+    'the-button',
+    'passwords',
+    'complicated-wires',
+    'simon-says',
+    'memory',
+    'morse-code',
+  ],
 };
 
 /**
