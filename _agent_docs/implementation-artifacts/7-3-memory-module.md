@@ -4,7 +4,7 @@ baseline_commit: 0f389788a6592babeb2641fc3d0d36248ef47e60
 
 # Story 7.3: Memory Module
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -103,6 +103,13 @@ so that we solve a sequential state machine that references the position and lab
 - [x] **Task 10 — Full verification**
   - [x] `pnpm -r typecheck` clean (all 4 workspaces); `pnpm -r test` green (shared/server/client), including the new memory suite covering all 20 stage cells, the reset-to-stage-1 cases, and the cross-stage references.
   - [x] **Jay verifies interactively (human-verification AC rule — story is not done until his observed result is in Completion Notes):** in `/dev/sandbox`, generate a Memory module; confirm (a) each stage shows a display digit + four labelled buttons; (b) following the manual, a correct 5-stage run solves the module; (c) a wrong press at stage ≥2 records a strike AND visibly resets the module to stage 1 (the display/layout return to the stage-1 values, not the current stage); (d) digits are legible and past-press history is NOT shown; (e) a Hard-tier live round (Facilitator picks Hard, module drawn from the pool) reaches the Memory module and solves end-to-end.
+
+## Review Findings
+
+_Code review 2026-07-02 (gds-code-review, 3 adversarial layers: Blind Hunter, Edge Case Hunter, Acceptance Auditor). Core logic is clean: all 20 stage-table cells verified correct against the GDD/manual and the independent `EXPECTED_RULES`; AC1–AC7 pass; reset-to-stage-1 crux confirmed to stick through `bombReducer`; purity/immutability/determinism all hold. Two Low presentation/hardening items only._
+
+- [x] [Review][Patch] `prefers-reduced-motion` not respected in press feedback [apps/client/src/modules/memory/DefuserView.tsx:62] — FIXED: imported `prefersReducedMotion` from `../../scenes/dom.js`, gate the depress (`group.position.z`) behind `!reduced` so reduced-motion users get no positional movement; the static emissive brighten remains as non-motion press feedback (mirrors `simon-says`). Presentation-only.
+- [x] [Review][Patch] DefuserView only null-checks `data`, not `data.stages[data.stage-1]` [apps/client/src/modules/memory/DefuserView.tsx:76] — FIXED: guard tightened to `if (!data?.stages?.[data.stage - 1]) return null` so a partial/malformed `MemoryState` renders null instead of throwing a render-time TypeError. Defensive hardening (not reachable via the normal server contract).
 
 ## Dev Notes
 

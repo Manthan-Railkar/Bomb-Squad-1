@@ -6,6 +6,7 @@ import { useGameStore } from '../../store/gameStore.js';
 import type { ModuleDefuserViewProps } from '../registry.js';
 import { dispatchModuleAction } from '../dispatch.js';
 import { moduleClickHandlers } from '../interaction.js';
+import { prefersReducedMotion } from '../../scenes/dom.js';
 import { MEMORY_MODULE_ID, MEMORY_STAGE_COUNT, type MemoryState } from './types.js';
 
 /**
@@ -57,6 +58,9 @@ export function MemoryDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
   const pressed = useRef<{ position: number; remaining: number } | null>(null);
   const materials = useRef<Array<MeshStandardMaterial | null>>([]);
   const groups = useRef<Array<Group | null>>([]);
+  // Reduced-motion: suppress the physical depress (motion); the emissive brighten
+  // is a static brightness change and still conveys that the press registered.
+  const reduced = useMemo(() => prefersReducedMotion(), []);
 
   // Press-feedback decay only (no sequence playback for Memory).
   useFrame((_, delta) => {
@@ -69,11 +73,11 @@ export function MemoryDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
       const mat = materials.current[i];
       if (mat) mat.emissiveIntensity = held === i + 1 ? PRESS_EMISSIVE : REST_EMISSIVE;
       const group = groups.current[i];
-      if (group) group.position.z = held === i + 1 ? BASE_Z - PRESS_DEPTH : BASE_Z;
+      if (group) group.position.z = held === i + 1 && !reduced ? BASE_Z - PRESS_DEPTH : BASE_Z;
     }
   });
 
-  if (!data) return null;
+  if (!data?.stages?.[data.stage - 1]) return null;
   const stage = data.stages[data.stage - 1];
 
   return (

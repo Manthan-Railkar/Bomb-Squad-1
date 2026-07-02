@@ -108,7 +108,7 @@ development_status:
   epic-7: in-progress
   7-1-complicated-wires-module: review
   7-2-simon-says-module: done
-  7-3-memory-module: review
+  7-3-memory-module: done
   7-4-morse-code-module: ready-for-dev
   epic-7-retrospective: optional
 
