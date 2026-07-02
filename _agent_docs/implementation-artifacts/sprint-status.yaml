@@ -1,5 +1,5 @@
 # generated: 2026-06-10
-# last_updated: 2026-06-20 (3-6 review)
+# last_updated: 2026-07-03 (td-9 dev; td-8 done)
 # project: Bomb Squad
 # project_key: NOKEY
 # tracking_system: file-system
@@ -151,3 +151,5 @@ development_status:
   td-4-tooling-vite-typescript-jest: done
   td-5-player-simulator-test-harness: done
   td-6-playwright-client-e2e-harness: done
+  # Sprint 6 retro (2026-07-02) action items → stories (2026-07-03)
+  td-8-module-defect-class-checklist: done         # AI-2: 3 recurring reducer defect classes → project-context module checklist (landed 2026-07-03, review waived by Jay; AC3 verified live on next module story)

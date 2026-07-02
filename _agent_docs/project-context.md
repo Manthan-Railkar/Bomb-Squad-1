@@ -4,7 +4,7 @@ user_name: 'Jay'
 date: '2026-06-09'
 sections_completed: ['technology_stack', 'web_stack_architecture', 'performance', 'code_organization', 'testing', 'platform_build', 'critical_rules']
 status: 'complete'
-rule_count: 47
+rule_count: 50
 optimized_for_llm: true
 ---
 
@@ -66,6 +66,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - `render(state)` and `handleInteraction(action)` must be pure/deterministic
 - Module reducers are registered in `MODULE_REDUCERS` — bomb reducer never changes when new modules are added (open/closed principle)
 - `getManualPages()` returns structured data, not raw HTML or untyped JSX
+
+**Module reducer defect-class checklist** (pre-implementation constraints for EVERY module story — each class was re-found by review in ≥2 module stories; satisfy them in the spec/tests up front, per Sprint 6 retro Action Item 2 / TD-8):
+1. **Degenerate/malformed-state inert guard — never a strike-forever trap, and guards never throw.** An unsolvable or degenerate generated board, or a malformed/out-of-range action or stamped value, must make the module *inert* (no-op, state returned unchanged) — never a state that strikes on every interaction with no escape, and never a `throw` from the reducer. (Example fixes: 6.1 unsolvable-keypad-board inert guard — re-found missing in 6.2; 7.2 `Number.isInteger(strikeCount)` guard-never-throw tightening.)
+2. **Fail-closed lookups on unknown ids/keys.** Any table/registry/map lookup keyed by an id from state or an action must fail *closed* on an unknown key (safe no-op / rejected interaction), never fail *open* (a default value that permits the action). (Example fix: 6.4 fail-closed `isWall` — an unknown `mazeId` previously returned `false` = walk-through-walls.)
+3. **MODULE_RESET-on-solved is a test-pinned no-op.** Every module's test suite must assert that `MODULE_RESET` on an already-`solved` module does NOT re-arm it. (Unpinned in both 6.1 and 6.2 and re-found by review each time. Note: the fleet-wide handler-side fix — rejecting client-forged `MODULE_RESET` via MODULE_INTERACT — is a separate open item in `deferred-work.md` (7-4 review); this checklist owns only the per-module test pin.)
 
 **Socket.IO / Shared Types:**
 - All Socket.IO event types must be defined in `packages/shared/src/events/` and imported on both client and server — never duplicated
@@ -248,4 +253,4 @@ your-module-name/
 - Review after each major feature milestone for outdated rules
 - Remove rules that become obvious conventions over time
 
-_Last Updated: 2026-06-09_
+_Last Updated: 2026-07-03 (TD-8: module reducer defect-class checklist)_
