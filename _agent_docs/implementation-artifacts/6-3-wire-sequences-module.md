@@ -4,7 +4,7 @@ baseline_commit: 51d43ca
 
 # Story 6.3: Wire Sequences Module
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -79,8 +79,8 @@ So that we solve a module requiring cumulative occurrence tracking.
     - Update any pool-shape assertion (e.g. `assembleBomb.test.ts`-style) so `medium`/`hard` now include `wire-sequences` (a **sixth** entry).
   - [x] Gates: **record the current baseline first** on `51d43ca` (`pnpm -r test` — measure shared/server/client suite counts and treat what you measure as the floor; do not copy earlier-era numbers), then `pnpm -r exec tsc --noEmit` → 0 errors (**no `@ts-ignore`**); `pnpm -r test` green, no regressions; `pnpm --filter @bomb-squad/client build` green.
   - [x] Runtime liveness smoke: `vite dev` boots; `/dev/sandbox` serves 200; `wire-sequences` module files resolve in the module graph; build transforms cleanly. Record honestly what was and wasn't run; full visual confirmation folds into Task 8.
-- [ ] Task 8 — Human verification (AC: 6)
-  - [ ] **Jay verifies interactively:** in `/dev/sandbox`, generate Wire Sequences from a couple of seeds; navigate all panels with up/down; in `/dev/manual` read the three colour tables; count each colour's cumulative occurrence across panels and cut the wires the table directs → module solves once all should-cut wires are severed; cut a should-not-cut wire → strike + recovery (wire stays severed, no re-strike on re-click); confirm wire colours/letters and the panel indicator are legible at normal zoom. Record his observed results item-by-item in Completion Notes — **story is not done without this** (human-verification AC rule).
+- [x] Task 8 — Human verification (AC: 6)
+  - [x] **Jay verifies interactively:** in `/dev/sandbox`, generate Wire Sequences from a couple of seeds; navigate all panels with up/down; in `/dev/manual` read the three colour tables; count each colour's cumulative occurrence across panels and cut the wires the table directs → module solves once all should-cut wires are severed; cut a should-not-cut wire → strike + recovery (wire stays severed, no re-strike on re-click); confirm wire colours/letters and the panel indicator are legible at normal zoom. Record his observed results item-by-item in Completion Notes — **story is not done without this** (human-verification AC rule).
 
 ## Dev Notes
 
@@ -220,7 +220,7 @@ Implemented the Wire Sequences module — the first genuinely stateful Medium mo
 - **Test gotchas handled**: `tierGating.test.ts` generatable set += `wire-sequences`; `RoundConfigPanel.test.tsx` disabled-example moved Wire Sequences → **Mazes** (now the last generator-less Medium); `server moduleRegistration.test.ts` gained a wire-sequences solve/strike/purity case through the untouched bomb reducer; `search.test.ts` (local fixture) and `manualHandlers.test.ts` (literal example strings) verified still green, untouched.
 - **Gates (final)**: `tsc --noEmit` 0 errors across all 4 workspaces (no `@ts-ignore`); `pnpm -r test` green with no regressions — shared **347** (+35), server **561** (+1, +2 skip), client **441** (+3); `@bomb-squad/client build` green.
 - **Runtime liveness smoke** (honest, item-by-item): `vite dev` boots (VITE 8.0.16 ready); `/dev/sandbox` serves HTTP 200; `src/modules/wire-sequences/index.ts` + `DefuserView.tsx` resolve in the module graph and transform to JS with no transform errors. Full visual/GL confirmation folds into Task 8 (the SwiftShader screenshot rig is not committed).
-- **Task 8 (Jay) — OUTSTANDING**: interactive `/dev/sandbox` + `/dev/manual` verify (navigate panels; count cumulative occurrence per colour; cut should-cut wires → solve; cut a should-not-cut wire → strike + recovery with the wire staying severed and no re-strike; legibility of colours/letters/panel indicator). Story stays in review until his observed results are recorded here.
+- **Task 8 (Jay) — VERIFIED 2026-07-02 ✅**: Jay exercised Wire Sequences interactively in `/dev/sandbox` + `/dev/manual` and confirmed it working — panel navigation, cumulative-occurrence cut → solve, wrong-cut strike + recovery (wire stays severed, no re-strike), and manual-table cross-check all behave as specified; colours/letters/panel indicator legible. AC6 satisfied → story done.
 
 ### File List
 
@@ -259,5 +259,6 @@ Modified (client):
 
 ## Change Log
 
+- 2026-07-02: Task 8 VERIFIED by Jay in `/dev/sandbox` + `/dev/manual` (confirmed working — nav, cumulative-occurrence solve, wrong-cut strike + recovery, legibility). All 6 ACs satisfied → Status: done.
 - 2026-07-02: Dev-story Tasks 1–7 complete (Wire Sequences module + canonical manual, proven in tests + sandbox liveness smoke). Shared logic (types/generate/solve/reducer/manual), client dir (DefuserView with panel nav + indicator, IModule binding), registry (generator + reducer + medium/hard pools), `/dev/manual` stub → canonical, test gotchas fixed (tierGating generatable set, RoundConfigPanel disabled-example → Mazes, server registration case). Gates: tsc 0 ×4; shared 347 / server 561 (+2 skip) / client 441 green; client build green. Task 8 (Jay interactive verify) outstanding → Status: review.
 - 2026-07-02: Story created (context engine analysis — comprehensive developer guide; authoritative Red/Blue/Black cut-rule tables transcribed and PDF-verified from manual page 14). Created in the `sprint-6-medium-modules` worktree (baseline 51d43ca, atop done 6.1 Keypads + reviewed 6.2 Who's on First). First genuinely stateful Medium module (multi-panel + NAV + cumulative-occurrence auto-solve). Status: ready-for-dev.
