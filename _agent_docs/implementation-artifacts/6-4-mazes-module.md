@@ -106,6 +106,14 @@ So that we solve a spatial-navigation module with invisible walls.
 - [x] Task 8 — Human verification (AC: 5)
   - [x] **Jay verifies interactively:** in `/dev/sandbox`, generate Mazes from a couple of seeds; in `/dev/manual` confirm all 9 mazes render with walls + markers; match the on-bomb markers to the right maze; navigate the white light to the red triangle → solves; move into a wall and off the grid edge → strike + recovery (light doesn't move); confirm the bomb view shows markers + light + triangle but **no walls**, and everything is legible at normal zoom. Record his observed results item-by-item in Completion Notes — **story is not done without this** (human-verification AC rule).
 
+### Review Findings
+
+_Code review 2026-07-02 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). All 5 ACs satisfied; all binding project-context rules upheld. Findings below are all LOW severity / defensive-only (server-authoritative `mazeId`/`data`, set once by the generator, pinned by integrity tests) — none block the story._
+
+- [x] [Review][Patch] `isWall` fails OPEN on unknown `mazeId` — a wall-free, trivially-solvable maze [packages/shared/src/modules/mazes/solve.ts:39] — `if (!walls) return false` treats an out-of-range/`NaN` `mazeId` as having no interior walls, so every in-grid move becomes legal and the reducer can walk the light to the target and solve. The sibling `DefuserView` guards this (`if (!layout) return null`) but the authoritative reducer does not (`reducer.ts:42` passes `mazeId` straight to `canMove`). Fix: fail closed for an unknown maze (unknown ⇒ everything blocked) or guard `mazeId` in the reducer. Server-authoritative + never-mutated ⇒ low reachability.
+- [x] [Review][Patch] `DefuserView.selectMazesData` casts without validating data shape [apps/client/src/modules/mazes/DefuserView.tsx] — the selector checks `moduleId === MAZES_MODULE_ID` then `mod.data as MazesState` with no shape check; a payload with the right `moduleId` but a `data` missing `position`/`target` slips the `!layout` guard and throws at `cellXY(data.target.x, …)`, blanking the whole R3F bay render instead of rendering nothing. Fix: null-guard `position`/`target` in the selector (return null on incomplete data).
+- [x] [Review][Defer] `edgeKey` canonical ordering silently coupled to single-digit coords [packages/shared/src/modules/mazes/types.ts] — deferred, latent-only. `edgeKey` sorts `"x,y"` halves lexicographically, correct only because coords are 0..5; if `GRID_SIZE` ever reaches 10+, `"10,0"` sorts before `"2,0"` and `isWall` symmetry breaks with no test failure. Safe at the current constant; add an assertion/comment tying it to `GRID_SIZE < 10` if the grid ever grows.
+
 ## Dev Notes
 
 ### Scope decisions (read first)

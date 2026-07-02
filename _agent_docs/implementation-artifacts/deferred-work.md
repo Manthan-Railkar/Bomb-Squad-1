@@ -1,5 +1,9 @@
 # Deferred Work
 
+## Deferred from: code review of story 6-4-mazes-module (2026-07-02)
+
+- **`edgeKey` canonical ordering silently coupled to single-digit coords (→ mazes).** `edgeKey` (`packages/shared/src/modules/mazes/types.ts`) sorts the two `"x,y"` key halves lexicographically, correct only because coords are 0..5; if `GRID_SIZE` ever reaches 10+, `"10,0"` sorts before `"2,0"` and `isWall(a,b) === isWall(b,a)` symmetry breaks with no test failure. Safe at the current constant. Add an assertion/comment tying it to `GRID_SIZE < 10` if the grid ever grows. [Blind + Edge, latent]
+
 ## Deferred from: code review of Epic-8 relay (combined 8-7/8-8/8-9/8-10/8-11) (2026-06-21)
 
 _gds-code-review, three adversarial layers over the combined relay diff `b536b01..HEAD`. Acceptance Auditor passed all five stories. Two **[Decision]** items await Jay (logged in 8-7); the four below are deferred._

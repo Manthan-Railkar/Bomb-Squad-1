@@ -36,7 +36,11 @@ const WALL_SETS: ReadonlyArray<ReadonlySet<string>> = MAZE_LAYOUTS.map(
 /** Is the edge between adjacent cells `a`,`b` a wall in this maze? Symmetric. */
 export function isWall(mazeId: number, a: Cell, b: Cell): boolean {
   const walls = WALL_SETS[mazeId];
-  if (!walls) return false; // unknown maze id — treated as no interior wall
+  // Fail CLOSED: an unknown/out-of-range mazeId treats every edge as a wall, so
+  // canMove rejects all moves rather than yielding a wall-free, trivially-solvable
+  // maze. mazeId is server-authoritative and set once by generate, but the single
+  // legality checker must not fail open for a corrupt/desynced instance.
+  if (!walls) return true;
   return walls.has(edgeKey(a, b));
 }
 

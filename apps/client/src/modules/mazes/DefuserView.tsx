@@ -47,11 +47,24 @@ const ARROWS: ReadonlyArray<readonly [Direction, number, number, string]> = [
   ['right', ARROW_R, 0, '▶'],
 ];
 
+function isCell(c: unknown): c is { x: number; y: number } {
+  return typeof c === 'object' && c !== null
+    && typeof (c as { x: unknown }).x === 'number'
+    && typeof (c as { y: unknown }).y === 'number';
+}
+
 function selectMazesData(moduleIndex: number) {
   return (s: ReturnType<typeof useGameStore.getState>): MazesState | null => {
     const mod = s.bomb?.modules[moduleIndex];
-    // moduleId check guards a desynced payload from rendering garbage.
-    return mod?.moduleId === MAZES_MODULE_ID ? (mod.data as MazesState) : null;
+    // Guard a desynced payload: right moduleId but a malformed data shape must
+    // render nothing, not throw on data.position/data.target (which would blank
+    // the whole R3F bay). Validate the fields the view dereferences.
+    if (mod?.moduleId !== MAZES_MODULE_ID) return null;
+    const data = mod.data as Partial<MazesState> | undefined;
+    if (!data || typeof data.mazeId !== 'number' || !isCell(data.position) || !isCell(data.target)) {
+      return null;
+    }
+    return data as MazesState;
   };
 }
 

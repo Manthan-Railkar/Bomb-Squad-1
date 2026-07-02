@@ -146,8 +146,12 @@ describe('solve helpers', () => {
     expect(canMove(0, cell(5, 5), 'right')).toBe(false);
   });
 
-  it('isWall returns false for an unknown maze id', () => {
-    expect(isWall(99, cell(0, 0), cell(1, 0))).toBe(false);
+  it('isWall fails CLOSED for an unknown maze id (every edge blocked)', () => {
+    // A corrupt/desynced mazeId must not yield a wall-free, trivially-solvable
+    // maze — canMove rejects all moves rather than letting the light walk free.
+    expect(isWall(99, cell(0, 0), cell(1, 0))).toBe(true);
+    expect(canMove(99, cell(0, 0), 'right')).toBe(false);
+    expect(isReachable(99, cell(0, 0), cell(1, 0))).toBe(false);
   });
 
   it('isReachable is false for off-grid endpoints', () => {
