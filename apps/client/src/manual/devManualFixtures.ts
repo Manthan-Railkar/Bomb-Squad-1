@@ -4,6 +4,7 @@ import {
   getButtonManualPages,
   getPasswordsManualPages,
   getKeypadsManualPages,
+  getWhosOnFirstManualPages,
 } from '@bomb-squad/shared';
 
 /**
@@ -54,7 +55,10 @@ export const DEV_MANUAL_PAGES: ManualPage[] = [
   stub('morse-code', 'Morse Code'),
   stub('complicated-wires', 'Complicated Wires'),
   stub('wire-sequences', 'Wire Sequences'),
-  stub('whos-on-first', "Who's on First"),
+  // Who's on First: CANONICAL content from the module's getManualPages()
+  // (Story 6.2) — both the Step-1 display→position grid and the Step-2 label
+  // priority lists render from the same tables the solver reads.
+  ...getWhosOnFirstManualPages(),
   // Passwords: CANONICAL content from the module's getManualPages() (Story 5.5)
   // — the 35-word list renders from the same PASSWORD_WORDS the solver checks.
   ...getPasswordsManualPages(),

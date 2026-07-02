@@ -5,6 +5,7 @@ import { WIRES_MODULE_ID } from './wires/types.js';
 import { BUTTON_MODULE_ID } from './the-button/types.js';
 import { PASSWORDS_MODULE_ID } from './passwords/types.js';
 import { KEYPADS_MODULE_ID } from './keypads/types.js';
+import { WHOS_ON_FIRST_MODULE_ID } from './whos-on-first/types.js';
 // Import each generator directly from its own file, NOT via the module barrel
 // (./<mod>/index.js → ../index.js), so the registry never depends on the barrel
 // that parallel module stories edit.
@@ -13,6 +14,7 @@ import { generateWires } from './wires/generate.js';
 import { generateButton } from './the-button/generate.js';
 import { generatePasswords } from './passwords/generate.js';
 import { generateKeypads } from './keypads/generate.js';
+import { generateWhosOnFirst } from './whos-on-first/generate.js';
 
 /**
  * A module's seeded instance generator. `seed` is the per-(team,slot) moduleSeed
@@ -56,6 +58,9 @@ export const MODULE_GENERATORS: Record<string, ModuleGenerator> = {
   // medium/hard tier-pool entry land together (a pool may only list modules with
   // both a generator and a reducer, or generateLayout throws at ROUND_START).
   [KEYPADS_MODULE_ID]: generateKeypads as ModuleGenerator,
+  // whos-on-first: Story 6.2 — second MEDIUM-tier module. Generator + reducer + a
+  // medium/hard tier-pool entry land together (same generateLayout requirement).
+  [WHOS_ON_FIRST_MODULE_ID]: generateWhosOnFirst as ModuleGenerator,
 };
 
 /**
@@ -106,8 +111,9 @@ export const TIER_POOLS: Record<DifficultyTier, readonly string[]> = {
   easy: ['wires', 'the-button', 'passwords'],
   // keypads (6.1) is the first Medium module — it joins medium AND hard (hard ⊇
   // medium). Easy stays the canonical Easy trio.
-  medium: ['wires', 'the-button', 'passwords', 'keypads'],
-  hard: ['wires', 'the-button', 'passwords', 'keypads'],
+  // whos-on-first (6.2) joins keypads as the second Medium module (medium + hard).
+  medium: ['wires', 'the-button', 'passwords', 'keypads', 'whos-on-first'],
+  hard: ['wires', 'the-button', 'passwords', 'keypads', 'whos-on-first'],
 };
 
 /**

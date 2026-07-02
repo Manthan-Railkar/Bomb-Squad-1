@@ -4,11 +4,13 @@ import {
   BUTTON_MODULE_ID,
   PASSWORDS_MODULE_ID,
   KEYPADS_MODULE_ID,
+  WHOS_ON_FIRST_MODULE_ID,
   devDemoReducer,
   wiresReducer,
   buttonReducer,
   passwordsReducer,
   keypadsReducer,
+  whosOnFirstReducer,
   type ModuleState,
   type Reducer,
 } from '@bomb-squad/shared';
@@ -39,4 +41,7 @@ export const MODULE_REDUCERS: Record<string, ModuleReducer> = {
   // keypads: Story 6.1 — press four glyph buttons in their unique column's
   // top-to-bottom order (first Medium module).
   [KEYPADS_MODULE_ID]: keypadsReducer as ModuleReducer,
+  // whos-on-first: Story 6.2 — display→position (Step 1), read label → priority
+  // list (Step 2); press the first listed label present on the module.
+  [WHOS_ON_FIRST_MODULE_ID]: whosOnFirstReducer as ModuleReducer,
 };

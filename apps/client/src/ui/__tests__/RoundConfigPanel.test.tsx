@@ -128,13 +128,14 @@ describe('RoundConfigPanel — emits ROUND_CONFIGURE', () => {
 });
 
 describe('RoundConfigPanel — module pool override', () => {
-  it('disables un-implemented modules and enables the generatable trio', () => {
+  it('disables un-implemented modules and enables the generatable set', () => {
     seed({ config: { difficulty: 'medium' } });
     render(<RoundConfigPanel />);
     const pool = screen.getByRole('group', { name: 'Module pool' });
-    // Who's on First (no generator yet) is present but disabled. Keypads gained a
-    // generator in Story 6.1, so it is no longer an un-implemented example.
-    expect(within(pool).getByRole('button', { name: "Who's on First" })).toBeDisabled();
+    // Wire Sequences (no generator yet) is present but disabled. Keypads (6.1) and
+    // Who's on First (6.2) gained generators, so they are no longer un-implemented
+    // examples.
+    expect(within(pool).getByRole('button', { name: 'Wire Sequences' })).toBeDisabled();
     // Wires (generatable, in the default pool) is enabled and pressed.
     const wires = within(pool).getByRole('button', { name: 'Wires' });
     expect(wires).toBeEnabled();

@@ -4,6 +4,7 @@ import { WIRES_MODULE } from './wires/index.js';
 import { BUTTON_MODULE } from './the-button/index.js';
 import { PASSWORDS_MODULE } from './passwords/index.js';
 import { KEYPADS_MODULE } from './keypads/index.js';
+import { WHOS_ON_FIRST_MODULE } from './whos-on-first/index.js';
 
 /**
  * Module registration barrel — importing it (main.tsx does, once) registers
@@ -22,6 +23,7 @@ export const SANDBOX_MODULES: readonly SandboxModule[] = [
   BUTTON_MODULE as SandboxModule,
   PASSWORDS_MODULE as SandboxModule,
   KEYPADS_MODULE as SandboxModule,
+  WHOS_ON_FIRST_MODULE as SandboxModule,
 ];
 
-export { DEV_DEMO_MODULE, WIRES_MODULE, BUTTON_MODULE, PASSWORDS_MODULE, KEYPADS_MODULE };
+export { DEV_DEMO_MODULE, WIRES_MODULE, BUTTON_MODULE, PASSWORDS_MODULE, KEYPADS_MODULE, WHOS_ON_FIRST_MODULE };
