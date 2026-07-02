@@ -4,11 +4,13 @@ import {
   BUTTON_MODULE_ID,
   PASSWORDS_MODULE_ID,
   COMPLICATED_WIRES_MODULE_ID,
+  SIMON_SAYS_MODULE_ID,
   devDemoReducer,
   wiresReducer,
   buttonReducer,
   passwordsReducer,
   complicatedWiresReducer,
+  simonSaysReducer,
   type ModuleState,
   type Reducer,
 } from '@bomb-squad/shared';
@@ -39,4 +41,8 @@ export const MODULE_REDUCERS: Record<string, ModuleReducer> = {
   // complicated-wires: Story 7.1 — first Hard module. Per-wire truth-table cut
   // decision against the bomb's public edgework; cut every should-cut wire.
   [COMPLICATED_WIRES_MODULE_ID]: complicatedWiresReducer as ModuleReducer,
+  // simon-says: Story 7.2 — second Hard module. Growing colour-flash sequence;
+  // the translation row is chosen by the live team strike count, which the
+  // MODULE_INTERACT handler stamps onto the action (server-authoritative).
+  [SIMON_SAYS_MODULE_ID]: simonSaysReducer as ModuleReducer,
 };

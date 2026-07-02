@@ -170,7 +170,20 @@ export function registerModuleHandlers(io: SessionIOServer, deps: SessionHandler
           return;
         }
 
-        const next = bombReducer(bomb, { type: 'MODULE_ACTION', moduleIndex, payload: action });
+        // Stamp the AUTHORITATIVE live team strike count onto the module action
+        // before reducing. This is a module-agnostic enrichment (modules that
+        // don't need it ignore the extra field); it feeds bomb-level state that
+        // the pure module reducer cannot otherwise reach (it only receives its
+        // own ModuleState, never BombState). Server-authoritative: it OVERRIDES
+        // any client-sent `strikeCount` (a spoofed value would be a cheat — e.g.
+        // Simon Says' translation row is chosen by the strike count). `strikes`
+        // is 0|1|2 here — the handler already rejected `strikes >= 3` above.
+        const enrichedAction = { ...(action as object), strikeCount: bomb.strikes };
+        const next = bombReducer(bomb, {
+          type: 'MODULE_ACTION',
+          moduleIndex,
+          payload: enrichedAction,
+        });
         // No-op detection by the targeted module's referential identity. A guard
         // no-op (solved-inert module, malformed/out-of-bounds action, out-of-
         // contract output) leaves that module slot unchanged — and strikes/solved

@@ -5,6 +5,7 @@ import { WIRES_MODULE_ID } from './wires/types.js';
 import { BUTTON_MODULE_ID } from './the-button/types.js';
 import { PASSWORDS_MODULE_ID } from './passwords/types.js';
 import { COMPLICATED_WIRES_MODULE_ID } from './complicated-wires/types.js';
+import { SIMON_SAYS_MODULE_ID } from './simon-says/types.js';
 // Import each generator directly from its own file, NOT via the module barrel
 // (./<mod>/index.js → ../index.js), so the registry never depends on the barrel
 // that parallel module stories edit.
@@ -13,6 +14,7 @@ import { generateWires } from './wires/generate.js';
 import { generateButton } from './the-button/generate.js';
 import { generatePasswords } from './passwords/generate.js';
 import { generateComplicatedWires } from './complicated-wires/generate.js';
+import { generateSimonSays } from './simon-says/generate.js';
 
 /**
  * A module's seeded instance generator. `seed` is the per-(team,slot) moduleSeed
@@ -57,6 +59,11 @@ export const MODULE_GENERATORS: Record<string, ModuleGenerator> = {
   // or generateLayout throws at ROUND_START). Per-wire attribute→code truth table
   // evaluated against the bomb's public edgework (serial/ports/batteries).
   [COMPLICATED_WIRES_MODULE_ID]: generateComplicatedWires as ModuleGenerator,
+  // simon-says: Story 7.2 — second Hard module. Growing colour-flash sequence
+  // translated through a table chosen by serial-vowel + live strike count.
+  // Generator + reducer + a Hard tier-pool entry land together (a pool may only
+  // list modules with both, or generateLayout throws at ROUND_START).
+  [SIMON_SAYS_MODULE_ID]: generateSimonSays as ModuleGenerator,
 };
 
 /**
@@ -109,7 +116,7 @@ export const TIER_POOLS: Record<DifficultyTier, readonly string[]> = {
   // complicated-wires (7.1) is the first Hard-only module — added to `hard` alone
   // (leave easy/medium untouched; a Hard module is not a superset member of the
   // easier tiers). This flips 8.1's dashboard chip from disabled to selectable.
-  hard: ['wires', 'the-button', 'passwords', 'complicated-wires'],
+  hard: ['wires', 'the-button', 'passwords', 'complicated-wires', 'simon-says'],
 };
 
 /**

@@ -5,6 +5,7 @@ import {
   BUTTON_MODULE_ID,
   PASSWORDS_MODULE_ID,
   COMPLICATED_WIRES_MODULE_ID,
+  SIMON_SAYS_MODULE_ID,
   devDemoReducer,
   generateDevDemo,
   generateWires,
@@ -15,6 +16,7 @@ import {
   type ComplicatedWiresState,
   type ModuleState,
   type PasswordsState,
+  type SimonSaysState,
 } from '@bomb-squad/shared';
 import { createBombReducer, bombReducer } from '../bombReducer.js';
 import { MODULE_REDUCERS, type ModuleReducer } from '../MODULE_REDUCERS.js';
@@ -232,6 +234,42 @@ describe('open/closed module registration (AC2)', () => {
     expect(struck.strikes).toBe(1);
   });
 
+  it('simon-says (7.2) is registered and solves/strikes through the untouched bomb reducer', () => {
+    expect(MODULE_REDUCERS[SIMON_SAYS_MODULE_ID]).toBeDefined();
+    // Serial 'AB3XK4' contains a vowel (A) → Table A. At 0 strikes a red flash
+    // maps to a blue press. Single-flash sequence so the first correct press solves.
+    const SIMON_CTX: BombContext = {
+      serialNumber: 'AB3XK4',
+      batteryCount: 1,
+      indicators: [],
+      ports: [],
+    };
+    const data: SimonSaysState = { sequence: ['red'], stage: 1, progress: 0, ctx: SIMON_CTX };
+    const bomb: BombState = {
+      context: SIMON_CTX,
+      modules: [{ moduleId: SIMON_SAYS_MODULE_ID, status: 'armed', data }],
+      strikes: 0,
+      solved: false,
+    };
+    // Correct translated press (red flash → blue) with the server-stamped strike
+    // count solves with no strike.
+    const solved = bombReducer(bomb, {
+      type: 'MODULE_ACTION',
+      moduleIndex: 0,
+      payload: { type: 'PRESS', color: 'blue', strikeCount: 0 },
+    });
+    expect(solved.modules[0].status).toBe('solved');
+    expect(solved.strikes).toBe(0);
+    // A wrong press rolls up into a team strike and re-arms.
+    const struck = bombReducer(bomb, {
+      type: 'MODULE_ACTION',
+      moduleIndex: 0,
+      payload: { type: 'PRESS', color: 'red', strikeCount: 0 },
+    });
+    expect(struck.modules[0].status).toBe('armed'); // transient 'struck' rolled up
+    expect(struck.strikes).toBe(1);
+  });
+
   it('dev-demo is registered in the production MODULE_REDUCERS map', () => {
     expect(MODULE_REDUCERS[DEV_DEMO_MODULE_ID]).toBeDefined();
     const next = bombReducer(devDemoBomb('cut'), {
@@ -252,7 +290,7 @@ describe('module-reducer output guard (1.6 deferral closed in 5.1)', () => {
 
   it('rejects output that rebinds moduleId to another reducer', () => {
     const reduce = createBombReducer({
-      [DEV_DEMO_MODULE_ID]: rogue({ moduleId: 'simon-says', status: 'solved' }),
+      [DEV_DEMO_MODULE_ID]: rogue({ moduleId: 'memory', status: 'solved' }),
     });
     const next = reduce(bomb, { type: 'MODULE_ACTION', moduleIndex: 0, payload: {} });
     expect(next).toBe(bomb); // state unchanged, no throw

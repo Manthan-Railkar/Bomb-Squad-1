@@ -4,6 +4,7 @@ import {
   getButtonManualPages,
   getPasswordsManualPages,
   getComplicatedWiresManualPages,
+  getSimonSaysManualPages,
 } from '@bomb-squad/shared';
 
 /**
@@ -37,7 +38,10 @@ export const DEV_MANUAL_PAGES: ManualPage[] = [
   // — the decision + release tables render from the same data the solver uses.
   ...getButtonManualPages(),
   stub('keypads', 'Keypads'),
-  stub('simon-says', 'Simon Says'),
+  // Simon Says: CANONICAL content from the module's getManualPages() (Story 7.2)
+  // — both translation tables (vowel/no-vowel × 3 strike rows) render from the
+  // same SIMON_TABLES the solver reads.
+  ...getSimonSaysManualPages(),
   // Long chapter → exercises per-chapter scroll memory (AC2).
   {
     chapterId: 'memory',
