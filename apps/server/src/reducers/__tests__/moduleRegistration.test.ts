@@ -6,6 +6,7 @@ import {
   PASSWORDS_MODULE_ID,
   COMPLICATED_WIRES_MODULE_ID,
   SIMON_SAYS_MODULE_ID,
+  MEMORY_MODULE_ID,
   devDemoReducer,
   generateDevDemo,
   generateWires,
@@ -14,6 +15,7 @@ import {
   type BombState,
   type ButtonState,
   type ComplicatedWiresState,
+  type MemoryState,
   type ModuleState,
   type PasswordsState,
   type SimonSaysState,
@@ -270,6 +272,52 @@ describe('open/closed module registration (AC2)', () => {
     expect(struck.strikes).toBe(1);
   });
 
+  it('memory (7.3) is registered: a full 5-stage solve and a wrong-press reset round-trip', () => {
+    expect(MODULE_REDUCERS[MEMORY_MODULE_ID]).toBeDefined();
+    // Explicit instance so presses are deterministic without seed-searching. All
+    // layouts are the identity [1,2,3,4]; displays chosen so the correct presses
+    // are [2,1,3,1,2] (stage 5 uses "same label as stage 1").
+    const identity = [1, 2, 3, 4] as const;
+    const stages = ([1, 3, 3, 2, 1] as const).map((display) => ({
+      display,
+      labels: [...identity],
+    }));
+    const data: MemoryState = { stages, stage: 1, history: [] };
+    const bomb: BombState = {
+      context: CTX,
+      modules: [{ moduleId: MEMORY_MODULE_ID, status: 'armed', data }],
+      strikes: 0,
+      solved: false,
+    };
+
+    // Five correct presses in sequence solve the module, no strikes.
+    const presses = [2, 1, 3, 1, 2];
+    let state = bomb;
+    presses.forEach((position, i) => {
+      state = bombReducer(state, { type: 'MODULE_ACTION', moduleIndex: 0, payload: { type: 'PRESS', position } });
+      expect(state.modules[0].status).toBe(i === presses.length - 1 ? 'solved' : 'armed');
+    });
+    expect(state.strikes).toBe(0);
+
+    // Advance one correct stage, then a wrong press: rolls up a team strike AND
+    // resets the module to stage 1 (the crux) via the transient 'struck'.
+    const atStage2 = bombReducer(bomb, {
+      type: 'MODULE_ACTION',
+      moduleIndex: 0,
+      payload: { type: 'PRESS', position: 2 },
+    });
+    expect((atStage2.modules[0].data as MemoryState).stage).toBe(2);
+    const struck = bombReducer(atStage2, {
+      type: 'MODULE_ACTION',
+      moduleIndex: 0,
+      payload: { type: 'PRESS', position: 4 }, // wrong at stage 2
+    });
+    expect(struck.modules[0].status).toBe('armed'); // transient 'struck' rolled up
+    expect(struck.strikes).toBe(1);
+    expect((struck.modules[0].data as MemoryState).stage).toBe(1); // reset to stage 1
+    expect((struck.modules[0].data as MemoryState).history).toEqual([]);
+  });
+
   it('dev-demo is registered in the production MODULE_REDUCERS map', () => {
     expect(MODULE_REDUCERS[DEV_DEMO_MODULE_ID]).toBeDefined();
     const next = bombReducer(devDemoBomb('cut'), {
@@ -290,7 +338,7 @@ describe('module-reducer output guard (1.6 deferral closed in 5.1)', () => {
 
   it('rejects output that rebinds moduleId to another reducer', () => {
     const reduce = createBombReducer({
-      [DEV_DEMO_MODULE_ID]: rogue({ moduleId: 'memory', status: 'solved' }),
+      [DEV_DEMO_MODULE_ID]: rogue({ moduleId: 'morse-code', status: 'solved' }),
     });
     const next = reduce(bomb, { type: 'MODULE_ACTION', moduleIndex: 0, payload: {} });
     expect(next).toBe(bomb); // state unchanged, no throw

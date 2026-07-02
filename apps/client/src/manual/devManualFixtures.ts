@@ -5,6 +5,7 @@ import {
   getPasswordsManualPages,
   getComplicatedWiresManualPages,
   getSimonSaysManualPages,
+  getMemoryManualPages,
 } from '@bomb-squad/shared';
 
 /**
@@ -42,16 +43,11 @@ export const DEV_MANUAL_PAGES: ManualPage[] = [
   // — both translation tables (vowel/no-vowel × 3 strike rows) render from the
   // same SIMON_TABLES the solver reads.
   ...getSimonSaysManualPages(),
-  // Long chapter → exercises per-chapter scroll memory (AC2).
-  {
-    chapterId: 'memory',
-    chapterTitle: 'Memory',
-    sections: Array.from({ length: 14 }, (_, i) => ({
-      heading: `Stage note ${i + 1}`,
-      content:
-        'Long placeholder section so this chapter scrolls well past one sheet. Flip away and back: the manual must return to exactly this spot. A defuser under time pressure cannot afford a lost place.',
-    })),
-  },
+  // Memory: CANONICAL content from the module's getManualPages() (Story 7.3) —
+  // the five stage tables render from the same MEMORY_RULES the solver reads.
+  // Its five stage tables + intro make it the longest chapter here, so it still
+  // exercises per-chapter scroll memory (AC2) — the intent of the old fixture.
+  ...getMemoryManualPages(),
   stub('morse-code', 'Morse Code'),
   // Complicated Wires: CANONICAL content from the module's getManualPages()
   // (Story 7.1) — the cut-code legend + 16-row truth table render from the same

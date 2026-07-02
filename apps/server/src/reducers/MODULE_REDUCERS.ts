@@ -5,12 +5,14 @@ import {
   PASSWORDS_MODULE_ID,
   COMPLICATED_WIRES_MODULE_ID,
   SIMON_SAYS_MODULE_ID,
+  MEMORY_MODULE_ID,
   devDemoReducer,
   wiresReducer,
   buttonReducer,
   passwordsReducer,
   complicatedWiresReducer,
   simonSaysReducer,
+  memoryReducer,
   type ModuleState,
   type Reducer,
 } from '@bomb-squad/shared';
@@ -45,4 +47,8 @@ export const MODULE_REDUCERS: Record<string, ModuleReducer> = {
   // the translation row is chosen by the live team strike count, which the
   // MODULE_INTERACT handler stamps onto the action (server-authoritative).
   [SIMON_SAYS_MODULE_ID]: simonSaysReducer as ModuleReducer,
+  // memory: Story 7.3 — third Hard module. A 5-stage sequential state machine; a
+  // wrong press resets to stage 1 (not a per-stage retry) and rolls up a strike.
+  // No live bomb state, so no MODULE_INTERACT enrichment is needed.
+  [MEMORY_MODULE_ID]: memoryReducer as ModuleReducer,
 };
