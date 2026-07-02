@@ -273,7 +273,12 @@ describe('open/closed module registration (AC2)', () => {
     const data: WireSequencesState = generateWireSequences(7);
     const flat = flattenWires(data);
     const shouldCutIndices = flat.filter((f) => shouldCut(data, f.globalIndex)).map((f) => f.globalIndex);
-    const shouldNotCutIndex = flat.find((f) => !shouldCut(data, f.globalIndex))!.globalIndex;
+    // Generation only guarantees ≥1 should-CUT wire; a should-not-cut wire is a
+    // property of THIS seed's shape — pin it explicitly so a generator change
+    // fails here with a clear message, not a TypeError on the dereference.
+    const shouldNotCutWire = flat.find((f) => !shouldCut(data, f.globalIndex));
+    expect(shouldNotCutWire).toBeDefined();
+    const shouldNotCutIndex = shouldNotCutWire!.globalIndex;
     const wsBomb: BombState = {
       context: CTX,
       modules: [{ moduleId: WIRE_SEQUENCES_MODULE_ID, status: 'armed', data }],

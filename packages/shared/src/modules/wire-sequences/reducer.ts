@@ -58,6 +58,7 @@ export const wireSequencesReducer: Reducer<ModuleState<WireSequencesState>, unkn
 
   if (action.type === 'NAV') {
     const last = state.data.panels.length - 1;
+    if (last < 0) return state; // degenerate zero-panel state → no-op, never currentPanel: -1
     const delta = action.direction === 'down' ? 1 : -1;
     const next = Math.min(Math.max(state.data.currentPanel + delta, 0), last);
     // Clamped at a boundary → same panel → return the SAME object (no alloc).

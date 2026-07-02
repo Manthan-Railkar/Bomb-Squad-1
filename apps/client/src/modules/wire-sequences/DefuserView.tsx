@@ -62,7 +62,7 @@ export function WireSequencesDefuserView({ moduleIndex }: ModuleDefuserViewProps
   const selector = useMemo(() => selectWireSeqData(moduleIndex), [moduleIndex]);
   const data = useGameStore(selector);
 
-  if (!data) return null;
+  if (!data || data.panels.length === 0) return null;
 
   const panelCount = data.panels.length;
   const current = Math.min(Math.max(data.currentPanel, 0), panelCount - 1);
@@ -77,8 +77,15 @@ export function WireSequencesDefuserView({ moduleIndex }: ModuleDefuserViewProps
   const spacing = rows > 1 ? ROW_SPAN / (rows - 1) : 0;
   const topY = rows > 1 ? ROW_SPAN / 2 : 0;
 
+  // Boundary panels get no dispatch (the server would just no-op the clamped
+  // NAV) and a dimmed glyph as the affordance.
+  const canNav = (direction: 'up' | 'down') =>
+    direction === 'down' ? current < panelCount - 1 : current > 0;
   const nav = (direction: 'up' | 'down') =>
-    moduleClickHandlers(() => dispatchModuleAction(moduleIndex, { type: 'NAV', direction }));
+    moduleClickHandlers(() => {
+      if (!canNav(direction)) return;
+      dispatchModuleAction(moduleIndex, { type: 'NAV', direction });
+    });
 
   return (
     <group>
@@ -171,7 +178,7 @@ export function WireSequencesDefuserView({ moduleIndex }: ModuleDefuserViewProps
           <Text
             font="/fonts/jetbrains-mono-700.ttf"
             fontSize={0.06}
-            color={NAV_INK}
+            color={canNav(direction) ? NAV_INK : GROMMET}
             anchorX="center"
             anchorY="middle"
             position={[0, 0, 0.02]}
