@@ -88,10 +88,12 @@ describe('generateWhosOnFirst — determinism + structural solvability (AC1)', (
     expect(generateWhosOnFirst(42)).toEqual(generateWhosOnFirst(42));
   });
 
-  it('different seeds eventually produce different instances', () => {
-    const first = JSON.stringify(generateWhosOnFirst(0));
-    const anyDiffers = [1, 2, 3, 4, 5, 6, 7, 8].some((seed) => JSON.stringify(generateWhosOnFirst(seed)) !== first);
-    expect(anyDiffers).toBe(true);
+  it('is seed-sensitive: a 64-seed sweep yields many distinct boards', () => {
+    const boards = new Set<string>();
+    for (let seed = 0; seed < 64; seed++) boards.add(JSON.stringify(generateWhosOnFirst(seed)));
+    // 6-of-28 label draws + 28 displays: collisions are astronomically unlikely;
+    // anything under ~90% distinct means the generator is ignoring the seed.
+    expect(boards.size).toBeGreaterThanOrEqual(58);
   });
 
   it('produces a known display word and six distinct button labels for every seed', () => {
@@ -156,6 +158,21 @@ describe('solve helpers — hand-worked example verified against the manual', ()
   it('solutionIndex returns -1 for an unknown display (untrusted path)', () => {
     expect(solutionIndex({ display: 'ZZZ', labels: data.labels })).toBe(-1);
   });
+
+  it('readLabel/solutionIndex guard a labels array shorter than the read position (untrusted path)', () => {
+    // display 'FIRST' → position 1, but only one label present
+    const short: WhosOnFirstState = { display: 'FIRST', labels: ['NO'] };
+    expect(readLabel(short)).toBe('');
+    expect(solutionIndex(short)).toBe(-1);
+    expect(readLabel({ display: 'FIRST', labels: [] })).toBe('');
+  });
+
+  it('solutionIndex is prototype-safe: an Object.prototype key as read label returns -1, never throws', () => {
+    // display 'FIRST' → position 1 → read label 'constructor' (inherited, not an own table key)
+    const hostile: WhosOnFirstState = { display: 'FIRST', labels: ['NO', 'constructor', 'BLANK', 'YES', 'OKAY', 'LEFT'] };
+    expect(() => solutionIndex(hostile)).not.toThrow();
+    expect(solutionIndex(hostile)).toBe(-1);
+  });
 });
 
 describe('whosOnFirstReducer — contract obligations (frozen inputs throughout)', () => {
@@ -166,14 +183,26 @@ describe('whosOnFirstReducer — contract obligations (frozen inputs throughout)
     const s = armed(data);
     const next = whosOnFirstReducer(s, press(sol));
     expect(next.status).toBe('solved');
-    expect(next.data).toEqual(data); // board unchanged
+    expect(next.data).toBe(s.data); // board unchanged — same reference, no gratuitous copy
   });
 
   it('a wrong press strikes and leaves the board unchanged', () => {
     const s = armed(data);
     const wrong = whosOnFirstReducer(s, press(0));
     expect(wrong.status).toBe('struck');
-    expect(wrong.data).toEqual(data);
+    expect(wrong.data).toBe(s.data); // same reference
+  });
+
+  it('an unsolvable (malformed) board is inert, not a strike faucet', () => {
+    // Unknown display word → solutionIndex === -1: every press must fall
+    // through unchanged (mirror keypads' malformed-state guard) — striking
+    // forever would be uncurable even by MODULE_RESET.
+    const s = armed({ display: 'ZZZ', labels: data.labels });
+    for (let i = 0; i < BUTTON_COUNT; i++) expect(whosOnFirstReducer(s, press(i))).toBe(s);
+    // Prototype-hostile read label: inert, never throws.
+    const hostile = armed({ display: 'FIRST', labels: ['NO', 'constructor', 'BLANK', 'YES', 'OKAY', 'LEFT'] });
+    expect(() => whosOnFirstReducer(hostile, press(0))).not.toThrow();
+    expect(whosOnFirstReducer(hostile, press(0))).toBe(hostile);
   });
 
   it('out-of-bounds / NaN / non-integer buttonIndex falls through unchanged (guard)', () => {
@@ -204,7 +233,16 @@ describe('whosOnFirstReducer — contract obligations (frozen inputs throughout)
     const struck = Object.freeze({ moduleId: WHOS_ON_FIRST_MODULE_ID, status: 'struck' as const, data: armed(data).data });
     const next = whosOnFirstReducer(struck, { type: 'MODULE_RESET' });
     expect(next.status).toBe('armed');
-    expect(next.data).toEqual(data); // board preserved
+    expect(next.data).toBe(struck.data); // board preserved — same reference
+  });
+
+  it('MODULE_RESET re-arms even a SOLVED module (deliberate template exception — pin it)', () => {
+    // Like keypads/passwords: MODULE_RESET is forwarded whole, bypassing the
+    // bomb reducer's solved guard, and re-arms even a solved module.
+    const solved = Object.freeze({ moduleId: WHOS_ON_FIRST_MODULE_ID, status: 'solved' as const, data: armed(data).data });
+    const next = whosOnFirstReducer(solved, { type: 'MODULE_RESET' });
+    expect(next.status).toBe('armed');
+    expect(next.data).toBe(solved.data); // board preserved
   });
 
   it('MODULE_RESET on an already-armed module is a structural no-op', () => {
@@ -216,7 +254,11 @@ describe('whosOnFirstReducer — contract obligations (frozen inputs throughout)
     const s = armed(data);
     expect(() => whosOnFirstReducer(s, press(sol))).not.toThrow();
     expect(() => whosOnFirstReducer(s, press(0))).not.toThrow(); // wrong → strike
+    // MODULE_RESET's non-armed branch builds a new envelope — run it frozen too.
+    const struck = Object.freeze({ moduleId: WHOS_ON_FIRST_MODULE_ID, status: 'struck' as const, data: s.data });
+    expect(() => whosOnFirstReducer(struck, { type: 'MODULE_RESET' })).not.toThrow();
     expect(s.status).toBe('armed'); // original untouched
+    expect(whosOnFirstReducer(s, press(sol)).data).toBe(s.data); // no board copy either
   });
 
   it('solves end-to-end for a swept set of generated instances', () => {

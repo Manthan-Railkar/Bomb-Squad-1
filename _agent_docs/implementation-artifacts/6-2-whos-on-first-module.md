@@ -58,6 +58,20 @@ So that we solve a two-step display-word → label-priority module.
 - [x] Task 8 — Human verification (AC: 5)
   - [x] **Jay verifies interactively:** in `/dev/sandbox`, generate Who's on First from a couple of seeds; in `/dev/manual` read both tables; walk the two-step lookup by hand and press the solution button → solve; press a wrong button → strike + recovery; confirm the display word and six labels are legible at normal zoom. Record his observed results item-by-item in Completion Notes — **story is not done without this** (human-verification AC rule).
 
+### Review Findings
+
+_gds-code-review 2026-07-02 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). Table fidelity independently re-verified by two layers against the canonical PDF: all 28 Step-1 positions and all 28 Step-2 lists exact — no data defect. All 5 ACs satisfied; findings below are hardening/consistency items._
+
+- [x] [Review][Decision→Defer] Manual `RED` display-word row renders color-tinted — `EmphasizedText`'s `COLOR_WORD_RE` (`apps/client/src/manual/colorWords.ts:24`) tints the Step-1 `RED` cell in wire-red ink through `PageRenderer.tsx:60`. Color is explicitly NOT a cue in this module, and RED/READ/REED/LEED is exactly the cluster the Expert must discriminate by spelling. — deferred (reviewer's call, Jay AFK — overrule if wanted): folded into the ManualTable/PageRenderer presentation-field rework on deferred-work.md (same surface as the spacer-column fix); an emphasis opt-out field rides along. The word itself remains the signal (colorblind-floor rule), so the tint is misleading decoration, not a correctness bug.
+- [x] [Review][Patch] Story Dev Notes Step-1 table still certifies the two pre-correction values — the "authoritative, PDF-verified" table below says `''`→middle-left(2) and `BLANK`→top-right(1); the shipped (and independently re-verified correct) constants are 4 and 3. Update the two doc cells so the next agent reading this file doesn't re-introduce the bug the programmatic detection fixed. [_agent_docs/implementation-artifacts/6-2-whos-on-first-module.md:93,100]
+- [x] [Review][Patch] Step-2 lookup lacks the prototype-safe guard Step-1 has — `LABEL_PRIORITIES[label]` with a malformed label like `'constructor'` resolves an inherited `Function`, passes the `!list` guard, and throws `TypeError: list is not iterable` inside the reducer (never-throw contract). Mirror `readPosition`'s `Object.prototype.hasOwnProperty.call`. [packages/shared/src/modules/whos-on-first/solve.ts:36]
+- [x] [Review][Patch] No unsolvable-instance inert guard — a malformed board (`solutionIndex === -1`) makes EVERY press strike forever and `MODULE_RESET` can't cure it; keypads deliberately guards this exact trap (`keypads/reducer.ts:58`, added by the 6.1 review). Return state unchanged when no solution exists. [packages/shared/src/modules/whos-on-first/reducer.ts:48]
+- [x] [Review][Patch] `MODULE_RESET`-re-arms-solved is deliberate template semantics but unpinned — no test covers reset on a `'solved'` module (suite only tests `struck`/`armed`); keypads got this exact pin in the 6.1 review. Add the pin (and run the reset-on-struck path against frozen input). [packages/shared/src/modules/whos-on-first/reducer.ts:31]
+- [x] [Review][Patch] Canonical tables are runtime- and type-mutable — Task 1 specified `as const`; shipped as wide `Record<string, …>` annotations (siblings passwords/keypads use `as const`). `DISPLAY_POSITIONS.YES = 9` type-checks and silently corrupts solver + manual for the whole process. Convergent finding from all three layers. [packages/shared/src/modules/whos-on-first/types.ts:~40,~80]
+- [x] [Review][Patch] Self-correcting narration artifact in a shipped doc comment — `/** Six button labels in a 2×2… no — a 2-column × 3-row grid. */`. [packages/shared/src/modules/whos-on-first/types.ts (BUTTON_COUNT doc)]
+- [x] [Review][Patch] Test-strengthening bundle: (a) "different seeds differ" test passes if any 1 of 8 seeds differs — assert N distinct boards across a sweep; (b) immutability test never asserts `next.data === state.data` (no gratuitous board replacement) nor runs `MODULE_RESET`-on-struck frozen; (c) `readLabel`'s short-labels bounds guard has zero test coverage (dead-by-tests); (d) `moduleRegistration.test.ts` never asserts the input bomb state was left untouched after dispatch. [packages/shared/src/modules/whos-on-first/__tests__/whos-on-first.test.ts]
+- [x] [Review][Defer] Trailing spacer column bakes a PageRenderer right-align workaround into canonical shared manual data, and renders as a visible empty boxed column in the module's own `ManualPages.tsx` contract renderer — deferred, matches the keypads (6.1) precedent; proper fix (alignment field on `ManualTable`) already on the deferred-work ledger. [packages/shared/src/modules/whos-on-first/manual.ts]
+
 ## Dev Notes
 
 ### Scope decisions (read first)
@@ -90,14 +104,14 @@ python3.12 -c "import fitz; d=fitz.open('docs/KeepTalkingAndNobodyExplodes-BombD
 
 | display | pos (name) | idx |
 |---|---|---|
-| `''` (blank) | middle-left | 2 |
+| `''` (blank) | bottom-left | 4 |
 | `YES` | middle-left | 2 |
 | `FIRST` | top-right | 1 |
 | `DISPLAY` | bottom-right | 5 |
 | `OKAY` | top-right | 1 |
 | `SAYS` | bottom-right | 5 |
 | `NOTHING` | middle-left | 2 |
-| `BLANK` | top-right | 1 |
+| `BLANK` | middle-right | 3 |
 | `NO` | bottom-right | 5 |
 | `LED` | middle-left | 2 |
 | `LEAD` | bottom-right | 5 |
@@ -119,7 +133,7 @@ python3.12 -c "import fitz; d=fitz.open('docs/KeepTalkingAndNobodyExplodes-BombD
 | `C` | top-right | 1 |
 | `CEE` | bottom-right | 5 |
 
-> ⚠️ These 28 positions were transcribed by eye from the rendered page-9 grid. **Re-verify each one against the PNG** as the first substep of Task 2 — a single mis-read eye icon is the most probable defect in this story. If any cell disagrees with the PNG, the PNG wins.
+> ⚠️ These 28 positions were originally transcribed by eye from the rendered page-9 grid; during dev the grid was re-detected **programmatically** from the PNG, which corrected two by-eye cells (`''` blank: middle-left→**bottom-left 4**; `BLANK`: top-right→**middle-right 3**) — the table above now carries the corrected, shipped values (review patch 2026-07-02; independently re-verified against the PDF by the code-review Acceptance Auditor). If any cell ever disagrees with the PNG, the PNG wins.
 
 **STEP 2 — `LABEL_PRIORITIES` (28 button labels → 14-word ordered priority list).** Extracted verbatim from page 10 (text layer, reliable). Press the **first** word in the list that is present on the module:
 
@@ -276,6 +290,7 @@ claude-opus-4-8 (gds-dev-story workflow)
 
 ## Change Log
 
+- 2026-07-02: Code review (gds-code-review, claude-fable-5 — Blind Hunter + Edge Case Hunter + Acceptance Auditor): table fidelity independently re-verified against the canonical PDF by two layers (all 28+28 entries exact); all 5 ACs satisfied. 12 raw findings → 7 patched, 2 deferred, 3 dismissed. Patches applied: stale Dev Notes Step-1 cells corrected to the shipped values; prototype-safe `hasOwnProperty` guard on the Step-2 lookup (a `'constructor'` label could throw in the reducer); unsolvable-board inert guard in the reducer (mirror keypads — no incurable strike faucet); pinned MODULE_RESET-re-arms-solved + frozen reset-on-struck; tables → `Readonly<Record<…>>` + `as const` (sibling pattern); narration artifact comment removed; test strengthening (seed-sensitivity sweep ≥58/64 distinct, `data`-reference-preserved asserts, short-labels guard coverage, registration-input-untouched assert). Deferred to deferred-work.md: spacer-column presentation hack (with keypads') and the `RED`-row color-tint false cue (both fold into the ManualTable presentation-field rework). Gates: tsc 0; shared 312 / server 560 (+2 skip) / client 438 green. Status stays done.
 - 2026-07-02: Story created (context engine analysis — comprehensive developer guide; authoritative Step-1/Step-2 tables transcribed and PDF-verified from manual pages 9–10). Created in the `sprint-6-medium-modules` worktree (baseline 8d146ed, atop done 6.1 Keypads). Status: ready-for-dev.
 - 2026-07-02: Manual-table right-alignment fix (commit `ee15988`) — trailing spacer column on Step-1/Step-2 tables so the answer column stays left-aligned under its header (same PageRenderer right-align-last-cell issue as 6.1/keypads); +1 test.
 - 2026-07-02: AC5 satisfied — Jay verified Who's on First interactively in `/dev/sandbox` (two-step solve, wrong-press strike + recovery, legibility) against generated seed examples. All 8 tasks complete. Status: done.

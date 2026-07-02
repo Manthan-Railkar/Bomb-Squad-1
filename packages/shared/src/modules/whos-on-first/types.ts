@@ -23,7 +23,7 @@
 /** Module identifier — kebab-case (project naming convention). */
 export const WHOS_ON_FIRST_MODULE_ID = 'whos-on-first';
 
-/** Six button labels in a 2×2… no — a 2-column × 3-row grid. */
+/** Six button labels in a 2-column × 3-row grid. */
 export const BUTTON_COUNT = 6;
 
 /**
@@ -51,7 +51,7 @@ export const POSITION_NAMES = [
  * ONE constant, TWO consumers (solver + manual). `DISPLAY_WORDS` derives from its
  * keys so a display word can never exist without a mapping.
  */
-export const DISPLAY_POSITIONS: Record<string, number> = {
+export const DISPLAY_POSITIONS: Readonly<Record<string, number>> = {
   '': 4, // blank display
   YES: 2,
   FIRST: 1,
@@ -80,7 +80,7 @@ export const DISPLAY_POSITIONS: Record<string, number> = {
   SEE: 5,
   C: 1,
   CEE: 5,
-};
+} as const;
 
 /**
  * STEP 2 — button label → its 14-word ordered priority list. Press the FIRST word
@@ -92,7 +92,7 @@ export const DISPLAY_POSITIONS: Record<string, number> = {
  *
  * ONE constant, TWO consumers (solver + manual).
  */
-export const LABEL_PRIORITIES: Record<string, readonly string[]> = {
+export const LABEL_PRIORITIES: Readonly<Record<string, readonly string[]>> = {
   // ---- Family A (14) ----
   READY: ['YES', 'OKAY', 'WHAT', 'MIDDLE', 'LEFT', 'PRESS', 'RIGHT', 'BLANK', 'READY', 'NO', 'FIRST', 'UHHH', 'NOTHING', 'WAIT'],
   FIRST: ['LEFT', 'OKAY', 'YES', 'MIDDLE', 'NO', 'RIGHT', 'NOTHING', 'UHHH', 'WAIT', 'READY', 'BLANK', 'WHAT', 'PRESS', 'FIRST'],
@@ -123,7 +123,7 @@ export const LABEL_PRIORITIES: Record<string, readonly string[]> = {
   HOLD: ['YOU ARE', 'U', 'DONE', 'UH UH', 'YOU', 'UR', 'SURE', 'WHAT?', "YOU'RE", 'NEXT', 'HOLD', 'UH HUH', 'YOUR', 'LIKE'],
   SURE: ['YOU ARE', 'DONE', 'LIKE', "YOU'RE", 'YOU', 'HOLD', 'UH HUH', 'UR', 'SURE', 'U', 'WHAT?', 'NEXT', 'YOUR', 'UH UH'],
   LIKE: ["YOU'RE", 'NEXT', 'U', 'UR', 'HOLD', 'DONE', 'UH UH', 'WHAT?', 'UH HUH', 'YOU', 'LIKE', 'SURE', 'YOU ARE', 'YOUR'],
-};
+} as const;
 
 /** The 28 display words (Step-1 keys) — derived from the single source of truth. */
 export const DISPLAY_WORDS: readonly string[] = Object.keys(DISPLAY_POSITIONS);

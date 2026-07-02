@@ -257,6 +257,9 @@ describe('open/closed module registration (AC2)', () => {
     });
     expect(struck.modules[0].status).toBe('armed'); // transient 'struck' rolled up
     expect(struck.strikes).toBe(1);
+    // Purity: both dispatches reused the same input bomb — it must be untouched.
+    expect(wofBomb.modules[0].status).toBe('armed');
+    expect(wofBomb.strikes).toBe(0);
   });
 
   it('dev-demo is registered in the production MODULE_REDUCERS map', () => {

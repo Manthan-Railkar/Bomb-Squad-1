@@ -33,8 +33,10 @@ export function readLabel(state: WhosOnFirstState): string {
 export function solutionIndex(state: WhosOnFirstState): number {
   const label = readLabel(state);
   if (label === '') return -1;
+  // Prototype-safe own-key check (mirror readPosition): a malformed label like
+  // 'constructor' must not resolve an inherited Object.prototype member.
+  if (!Object.prototype.hasOwnProperty.call(LABEL_PRIORITIES, label)) return -1;
   const list = LABEL_PRIORITIES[label];
-  if (!list) return -1;
   for (const word of list) {
     const idx = state.labels.indexOf(word);
     if (idx !== -1) return idx;

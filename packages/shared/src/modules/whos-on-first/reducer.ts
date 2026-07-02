@@ -1,6 +1,6 @@
 import type { ModuleState, Reducer } from '../../types/index.js';
 import { isWhosOnFirstAction, BUTTON_COUNT, type WhosOnFirstState } from './types.js';
-import { isCorrectPress } from './solve.js';
+import { solutionIndex } from './solve.js';
 
 /**
  * Pure reducer for the Who's on First module.
@@ -44,8 +44,14 @@ export const whosOnFirstReducer: Reducer<ModuleState<WhosOnFirstState>, unknown>
     return state;
   }
 
-  // Recompute the solution from the public tables (no stored answer).
-  return isCorrectPress(state.data, buttonIndex)
+  // Recompute the solution from the public tables (no stored answer). A
+  // malformed instance with no solution (unknown display / short labels / no
+  // list word on the board — never produced by generate) is treated as inert
+  // rather than striking every press forever (an unsolvable strike faucet
+  // MODULE_RESET couldn't cure — mirror keypads' malformed-state guard).
+  const sol = solutionIndex(state.data);
+  if (sol === -1) return state;
+  return buttonIndex === sol
     ? { ...state, status: 'solved' }
     : { ...state, status: 'struck' }; // wrong button → strike, board preserved
 };
