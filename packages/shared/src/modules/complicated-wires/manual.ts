@@ -53,6 +53,11 @@ export function getComplicatedWiresManualPages(): ManualPage[] {
             'Columns: red stripe, blue stripe, star, LED (✓ = present, — = absent) ' +
             '→ cut code.',
           table: {
+            // A ✓/— truth table: render as an even grid (Story TD-9
+            // `evenColumns`) — full width, equal columns, centred cells — so the
+            // matrix fills the sheet in a regular lattice instead of the auto
+            // layout bunching every column against the left.
+            evenColumns: true,
             headers: ['Red stripe', 'Blue stripe', 'Star', 'LED', 'Code'],
             rows: COMPLICATED_WIRES_TABLE.map((row) => [
               mark(row.redStripe),

@@ -36,8 +36,13 @@ function alphabetTable(): ManualSection {
     heading: 'International Morse Code',
     content: '',
     table: {
+      // Two side-by-side character/code PAIRS — a symmetric reference chart, not
+      // an action/answer table. Opt the last column out of the viewer's
+      // right-align rule (Story TD-9) so the 2nd Code column reads like the 1st
+      // (left-aligned under its header) instead of hugging the right edge.
       headers: ['Character', 'Code', 'Character', 'Code'],
       rows,
+      rightAlignLastColumn: false,
     },
   };
 }

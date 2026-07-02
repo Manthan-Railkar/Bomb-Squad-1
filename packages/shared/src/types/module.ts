@@ -4,6 +4,35 @@ import type { Reducer } from './reducer.js';
 export interface ManualTable {
   headers: string[];
   rows: string[][];
+  /**
+   * Presentation (additive, Story TD-9): right-align the LAST column — header
+   * and cells — as the module's "action/answer" column. Default (undefined) is
+   * `true`: load-bearing for wires/the-button/passwords, whose final column IS
+   * the answer, so existing tables render exactly as before. Set `false` for
+   * symmetric reference grids (Keypads, Who's on First) so the last real column
+   * stays left-aligned under its header — instead of faking a trailing empty
+   * spacer column to absorb the right-align rule.
+   */
+  rightAlignLastColumn?: boolean;
+  /**
+   * Presentation (additive, Story TD-9): opt this table out of colour-word
+   * emphasis (the `MANUAL_COLOR_INKS` tint the viewer applies to RED/BLUE/…).
+   * Default (undefined) is `true` — tables keep the tint. Set `false` where
+   * colour must NOT be a cue: the Who's on First spelling-discrimination cluster
+   * (RED vs READ/REED/LEED — colourblind floor), where tinting only `RED` is a
+   * false signal. Opts out this table's tint only; other tables keep theirs.
+   */
+  emphasizeColorWords?: boolean;
+  /**
+   * Presentation (additive, Story TD-9): render as an EVEN GRID — full width
+   * with equal (fixed-layout) columns and centre-aligned headers + cells.
+   * Default (undefined) is `false` — the normal auto-width layout where an
+   * answer column right-aligns to the sheet edge. Set `true` for matrix/truth
+   * tables (single-glyph ✓/— cells under wide headers, e.g. Complicated Wires)
+   * so the columns fill the width in an even lattice instead of the auto layout
+   * bunching them all against the left. Overrides `rightAlignLastColumn`.
+   */
+  evenColumns?: boolean;
 }
 
 /** A grid cell coordinate (x = column, y = row; origin top-left). */

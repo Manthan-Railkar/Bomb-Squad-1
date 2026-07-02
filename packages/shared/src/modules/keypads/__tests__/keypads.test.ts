@@ -358,11 +358,12 @@ describe('getKeypadsManualPages — generated from the same table as the solver'
   it('renders exactly KEYPAD_COLUMNS as glyphs (manual ↔ solver share the constant)', () => {
     const table = pages[0].sections.find((s) => s.table)?.table;
     expect(table).toBeDefined();
-    // Six reference-column headers plus a trailing spacer (absorbs the viewer's
-    // right-align-last-column rule); every row carries the same trailing spacer.
-    expect(table!.headers.slice(0, KEYPAD_COLUMN_COUNT)).toEqual(['Col 1', 'Col 2', 'Col 3', 'Col 4', 'Col 5', 'Col 6']);
-    expect(table!.headers[KEYPAD_COLUMN_COUNT]).toBe('');
-    for (const row of table!.rows) expect(row[KEYPAD_COLUMN_COUNT]).toBe('');
+    // Exactly six reference-column headers — NO phantom trailing spacer (TD-9).
+    // The symmetric grid opts its last column out of the viewer's right-align
+    // rule via presentation metadata instead of faking a column to absorb it.
+    expect(table!.headers).toEqual(['Col 1', 'Col 2', 'Col 3', 'Col 4', 'Col 5', 'Col 6']);
+    expect(table!.rightAlignLastColumn).toBe(false);
+    for (const row of table!.rows) expect(row).toHaveLength(KEYPAD_COLUMN_COUNT);
     // Reconstruct the columns from the rendered rows and compare to the source.
     for (let c = 0; c < KEYPAD_COLUMN_COUNT; c++) {
       const rendered = table!.rows.map((row) => row[c]);

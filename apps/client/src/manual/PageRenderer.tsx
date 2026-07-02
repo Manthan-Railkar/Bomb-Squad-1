@@ -28,19 +28,35 @@ function EmphasizedText({ text }: { text: string }) {
 
 function TableView({ table }: { table: ManualTable }) {
   const hasHeaders = table.headers.some((h) => h.trim() !== '');
+  // Presentation metadata (Story TD-9), both default-on so metadata-free tables
+  // render exactly as before: the last column right-aligns as the answer column
+  // unless opted out, and colour words are tinted unless opted out.
+  const rightAlignLast = table.rightAlignLastColumn !== false;
+  const emphasize = table.emphasizeColorWords !== false;
+  // Even-grid layout (Story TD-9): full width, equal fixed columns, centred
+  // headers + cells — the matrix/truth-table look. Overrides the answer-column
+  // right-align. Default is the normal auto-width layout.
+  const evenColumns = table.evenColumns === true;
   return (
-    <table className="w-full border-collapse font-manual text-[15px]">
+    <table
+      className={`w-full border-collapse font-manual text-[15px] ${evenColumns ? 'table-fixed' : ''}`}
+    >
       {hasHeaders && (
         <thead>
           <tr>
             {table.headers.map((header, i) => (
               <th
                 key={i}
-                className={`border-b-2 pb-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.1em] ${
-                  // Match the last column's right-aligned value cells (see TableView
-                  // <td>) so the header lines up with its column instead of hanging
-                  // left. Every other column is left-aligned header + cell.
-                  i === table.headers.length - 1 ? 'text-right' : 'text-left'
+                className={`border-b-2 px-1 pb-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.1em] ${
+                  // Even grid → centre every header over its equal column.
+                  // Otherwise mirror the body <td> horizontal rhythm (px-1 +
+                  // pr-3.5, or a right-aligned last column) so the header aligns
+                  // with its column instead of hanging left.
+                  evenColumns
+                    ? 'text-center'
+                    : rightAlignLast && i === table.headers.length - 1
+                      ? 'text-right'
+                      : 'pr-3.5 text-left'
                 }`}
                 style={{ borderColor: '#211A12', color: '#8A7A5E' }}
               >
@@ -57,11 +73,15 @@ function TableView({ table }: { table: ManualTable }) {
               <td
                 key={c}
                 className={`border-b px-1 py-1.5 align-top leading-snug ${
-                  c === row.length - 1 ? 'whitespace-nowrap text-right font-semibold' : 'pr-3.5'
+                  evenColumns
+                    ? 'text-center'
+                    : rightAlignLast && c === row.length - 1
+                      ? 'whitespace-nowrap text-right font-semibold'
+                      : 'pr-3.5'
                 }`}
                 style={{ borderColor: '#D8CBAC', color: '#2A2118' }}
               >
-                <EmphasizedText text={cell} />
+                {emphasize ? <EmphasizedText text={cell} /> : cell}
               </td>
             ))}
           </tr>
@@ -71,10 +91,10 @@ function TableView({ table }: { table: ManualTable }) {
   );
 }
 
-/** A responsive grid of maze diagrams (used for the 9-up mazes page). */
+/** A fixed 3-column grid of maze diagrams (the 9 mazes render as a 3×3 block). */
 function MazeGridView({ mazes }: { mazes: ManualMaze[] }) {
   return (
-    <div className="flex flex-wrap gap-4">
+    <div className="grid w-fit grid-cols-3 gap-4">
       {mazes.map((maze, i) => (
         <MazeDiagram key={i} maze={maze} />
       ))}

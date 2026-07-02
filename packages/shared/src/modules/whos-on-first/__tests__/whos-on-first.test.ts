@@ -315,16 +315,30 @@ describe('getWhosOnFirstManualPages — generated from the same tables as the so
     }
   });
 
-  it('both tables carry a trailing spacer column so the answer column stays left-aligned under its header', () => {
+  it('both tables express left-alignment via presentation metadata, NOT a phantom spacer column (TD-9)', () => {
     for (const section of pages[0].sections) {
       const table = section.table!;
-      // last header is the empty spacer (absorbs PageRenderer's right-align rule)
-      expect(table.headers[table.headers.length - 1]).toBe('');
-      // every row has the same trailing spacer, so real columns are not the "last cell"
+      // Exactly two real columns — no empty trailing spacer.
+      expect(table.headers).toHaveLength(2);
+      expect(table.headers.every((h) => h !== '')).toBe(true);
       for (const row of table.rows) {
-        expect(row).toHaveLength(table.headers.length);
-        expect(row[row.length - 1]).toBe('');
+        expect(row).toHaveLength(2);
+        expect(row[row.length - 1]).not.toBe('');
       }
+      // Presentation metadata replaces the spacer: last column opts out of the
+      // viewer's right-align rule so both columns stay left-aligned.
+      expect(table.rightAlignLastColumn).toBe(false);
+    }
+  });
+
+  it('opts out of colour-word emphasis so RED is not falsely tinted (colourblind floor, TD-9)', () => {
+    // The Step-1 table contains RED alongside the near-spellings READ/REED/LEED;
+    // tinting only RED would be a false cue. The emphasis opt-out (consumed by
+    // PageRenderer) renders every cell as plain text.
+    const step1 = pages[0].sections[0].table!;
+    expect(step1.rows.some(([display]) => display === 'RED')).toBe(true);
+    for (const section of pages[0].sections) {
+      expect(section.table!.emphasizeColorWords).toBe(false);
     }
   });
 });

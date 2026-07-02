@@ -22,8 +22,10 @@ describe('keypads client binding', () => {
     expect(pages[0].chapterId).toBe(KEYPADS_MODULE_ID);
     // the table renders the six reference columns as glyphs
     const table = pages[0].sections.find((s) => s.table)?.table;
-    // six reference-column headers plus a trailing spacer column
-    expect(table?.headers).toEqual(['Col 1', 'Col 2', 'Col 3', 'Col 4', 'Col 5', 'Col 6', '']);
+    // exactly six reference-column headers, no phantom spacer (TD-9); the last
+    // column opts out of the viewer's right-align rule via presentation metadata
+    expect(table?.headers).toEqual(['Col 1', 'Col 2', 'Col 3', 'Col 4', 'Col 5', 'Col 6']);
+    expect(table?.rightAlignLastColumn).toBe(false);
     const col0 = table?.rows.map((row) => row[0]);
     expect(col0).toEqual(KEYPAD_COLUMNS[0].map((id) => KEYPAD_SYMBOL_GLYPHS[id].glyph));
   });
