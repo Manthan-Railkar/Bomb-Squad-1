@@ -6,6 +6,7 @@ import { BUTTON_MODULE_ID } from './the-button/types.js';
 import { PASSWORDS_MODULE_ID } from './passwords/types.js';
 import { KEYPADS_MODULE_ID } from './keypads/types.js';
 import { WHOS_ON_FIRST_MODULE_ID } from './whos-on-first/types.js';
+import { WIRE_SEQUENCES_MODULE_ID } from './wire-sequences/types.js';
 // Import each generator directly from its own file, NOT via the module barrel
 // (./<mod>/index.js → ../index.js), so the registry never depends on the barrel
 // that parallel module stories edit.
@@ -15,6 +16,7 @@ import { generateButton } from './the-button/generate.js';
 import { generatePasswords } from './passwords/generate.js';
 import { generateKeypads } from './keypads/generate.js';
 import { generateWhosOnFirst } from './whos-on-first/generate.js';
+import { generateWireSequences } from './wire-sequences/generate.js';
 
 /**
  * A module's seeded instance generator. `seed` is the per-(team,slot) moduleSeed
@@ -61,6 +63,10 @@ export const MODULE_GENERATORS: Record<string, ModuleGenerator> = {
   // whos-on-first: Story 6.2 — second MEDIUM-tier module. Generator + reducer + a
   // medium/hard tier-pool entry land together (same generateLayout requirement).
   [WHOS_ON_FIRST_MODULE_ID]: generateWhosOnFirst as ModuleGenerator,
+  // wire-sequences: Story 6.3 — third MEDIUM-tier module (first stateful one).
+  // Generator + reducer + a medium/hard tier-pool entry land together (same
+  // generateLayout requirement). Takes seed alone (no bomb-context rule).
+  [WIRE_SEQUENCES_MODULE_ID]: generateWireSequences as ModuleGenerator,
 };
 
 /**
@@ -112,8 +118,9 @@ export const TIER_POOLS: Record<DifficultyTier, readonly string[]> = {
   // keypads (6.1) is the first Medium module — it joins medium AND hard (hard ⊇
   // medium). Easy stays the canonical Easy trio.
   // whos-on-first (6.2) joins keypads as the second Medium module (medium + hard).
-  medium: ['wires', 'the-button', 'passwords', 'keypads', 'whos-on-first'],
-  hard: ['wires', 'the-button', 'passwords', 'keypads', 'whos-on-first'],
+  // wire-sequences (6.3) is the third Medium module (medium + hard).
+  medium: ['wires', 'the-button', 'passwords', 'keypads', 'whos-on-first', 'wire-sequences'],
+  hard: ['wires', 'the-button', 'passwords', 'keypads', 'whos-on-first', 'wire-sequences'],
 };
 
 /**

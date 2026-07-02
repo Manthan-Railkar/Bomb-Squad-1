@@ -6,6 +6,7 @@ import {
   PASSWORDS_MODULE_ID,
   KEYPADS_MODULE_ID,
   WHOS_ON_FIRST_MODULE_ID,
+  WIRE_SEQUENCES_MODULE_ID,
   devDemoReducer,
   generateDevDemo,
   generateWires,
@@ -14,6 +15,9 @@ import {
   solutionOrder,
   generateWhosOnFirst,
   solutionIndex,
+  generateWireSequences,
+  flattenWires,
+  shouldCut,
   type BombContext,
   type BombState,
   type ButtonState,
@@ -21,6 +25,7 @@ import {
   type PasswordsState,
   type KeypadsState,
   type WhosOnFirstState,
+  type WireSequencesState,
 } from '@bomb-squad/shared';
 import { createBombReducer, bombReducer } from '../bombReducer.js';
 import { MODULE_REDUCERS, type ModuleReducer } from '../MODULE_REDUCERS.js';
@@ -260,6 +265,40 @@ describe('open/closed module registration (AC2)', () => {
     // Purity: both dispatches reused the same input bomb — it must be untouched.
     expect(wofBomb.modules[0].status).toBe('armed');
     expect(wofBomb.strikes).toBe(0);
+  });
+
+  it('wire-sequences (6.3) is registered and solves/strikes through the untouched bomb reducer', () => {
+    expect(MODULE_REDUCERS[WIRE_SEQUENCES_MODULE_ID]).toBeDefined();
+    // Recompute cut decisions from the public panels + CUT_RULES (no stored answer).
+    const data: WireSequencesState = generateWireSequences(7);
+    const flat = flattenWires(data);
+    const shouldCutIndices = flat.filter((f) => shouldCut(data, f.globalIndex)).map((f) => f.globalIndex);
+    const shouldNotCutIndex = flat.find((f) => !shouldCut(data, f.globalIndex))!.globalIndex;
+    const wsBomb: BombState = {
+      context: CTX,
+      modules: [{ moduleId: WIRE_SEQUENCES_MODULE_ID, status: 'armed', data }],
+      strikes: 0,
+      solved: false,
+    };
+    // Cut every should-cut wire in order → solved only once the last one is severed.
+    let solved: BombState = wsBomb;
+    shouldCutIndices.forEach((wireIndex, i) => {
+      solved = bombReducer(solved, { type: 'MODULE_ACTION', moduleIndex: 0, payload: { type: 'CUT', wireIndex } });
+      const expected = i === shouldCutIndices.length - 1 ? 'solved' : 'armed';
+      expect(solved.modules[0].status).toBe(expected);
+    });
+    expect(solved.strikes).toBe(0);
+    // A should-not-cut wire rolls up into a team strike and re-arms.
+    const struck = bombReducer(wsBomb, {
+      type: 'MODULE_ACTION',
+      moduleIndex: 0,
+      payload: { type: 'CUT', wireIndex: shouldNotCutIndex },
+    });
+    expect(struck.modules[0].status).toBe('armed'); // transient 'struck' rolled up
+    expect(struck.strikes).toBe(1);
+    // Purity: the input bomb is untouched across dispatches.
+    expect(wsBomb.modules[0].status).toBe('armed');
+    expect(wsBomb.strikes).toBe(0);
   });
 
   it('dev-demo is registered in the production MODULE_REDUCERS map', () => {

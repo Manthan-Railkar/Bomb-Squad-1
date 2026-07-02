@@ -5,6 +5,7 @@ import {
   getPasswordsManualPages,
   getKeypadsManualPages,
   getWhosOnFirstManualPages,
+  getWireSequencesManualPages,
 } from '@bomb-squad/shared';
 
 /**
@@ -54,7 +55,10 @@ export const DEV_MANUAL_PAGES: ManualPage[] = [
   },
   stub('morse-code', 'Morse Code'),
   stub('complicated-wires', 'Complicated Wires'),
-  stub('wire-sequences', 'Wire Sequences'),
+  // Wire Sequences: CANONICAL content from the module's getManualPages()
+  // (Story 6.3) — the three colour occurrence tables render from the same
+  // CUT_RULES the reducer reads.
+  ...getWireSequencesManualPages(),
   // Who's on First: CANONICAL content from the module's getManualPages()
   // (Story 6.2) — both the Step-1 display→position grid and the Step-2 label
   // priority lists render from the same tables the solver reads.

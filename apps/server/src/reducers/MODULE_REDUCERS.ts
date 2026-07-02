@@ -5,12 +5,14 @@ import {
   PASSWORDS_MODULE_ID,
   KEYPADS_MODULE_ID,
   WHOS_ON_FIRST_MODULE_ID,
+  WIRE_SEQUENCES_MODULE_ID,
   devDemoReducer,
   wiresReducer,
   buttonReducer,
   passwordsReducer,
   keypadsReducer,
   whosOnFirstReducer,
+  wireSequencesReducer,
   type ModuleState,
   type Reducer,
 } from '@bomb-squad/shared';
@@ -44,4 +46,8 @@ export const MODULE_REDUCERS: Record<string, ModuleReducer> = {
   // whos-on-first: Story 6.2 — display→position (Step 1), read label → priority
   // list (Step 2); press the first listed label present on the module.
   [WHOS_ON_FIRST_MODULE_ID]: whosOnFirstReducer as ModuleReducer,
+  // wire-sequences: Story 6.3 — several panels of wires; cut by cumulative
+  // colour-occurrence rules; auto-solves when all should-cut wires are severed
+  // (first genuinely stateful Medium module — CUT + NAV).
+  [WIRE_SEQUENCES_MODULE_ID]: wireSequencesReducer as ModuleReducer,
 };
