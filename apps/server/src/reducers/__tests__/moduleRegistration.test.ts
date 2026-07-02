@@ -7,6 +7,7 @@ import {
   KEYPADS_MODULE_ID,
   WHOS_ON_FIRST_MODULE_ID,
   WIRE_SEQUENCES_MODULE_ID,
+  MAZES_MODULE_ID,
   devDemoReducer,
   generateDevDemo,
   generateWires,
@@ -26,6 +27,7 @@ import {
   type KeypadsState,
   type WhosOnFirstState,
   type WireSequencesState,
+  type MazesState,
 } from '@bomb-squad/shared';
 import { createBombReducer, bombReducer } from '../bombReducer.js';
 import { MODULE_REDUCERS, type ModuleReducer } from '../MODULE_REDUCERS.js';
@@ -304,6 +306,55 @@ describe('open/closed module registration (AC2)', () => {
     // Purity: the input bomb is untouched across dispatches.
     expect(wsBomb.modules[0].status).toBe('armed');
     expect(wsBomb.strikes).toBe(0);
+  });
+
+  it('mazes (6.4) is registered and solves/strikes through the untouched bomb reducer', () => {
+    expect(MODULE_REDUCERS[MAZES_MODULE_ID]).toBeDefined();
+    // Fixed instance (maze 0): from (0,0) a 'down' move is legal and reaches the
+    // target (0,1) → solved; from (0,1) a 'right' move crosses wall '0,1|1,1' → strike.
+    const data: MazesState = {
+      mazeId: 0,
+      start: { x: 0, y: 0 },
+      position: { x: 0, y: 0 },
+      target: { x: 0, y: 1 },
+    };
+    const mazeBomb: BombState = {
+      context: CTX,
+      modules: [{ moduleId: MAZES_MODULE_ID, status: 'armed', data }],
+      strikes: 0,
+      solved: false,
+    };
+    // Legal MOVE down → reaches the target → solved.
+    const solved = bombReducer(mazeBomb, {
+      type: 'MODULE_ACTION',
+      moduleIndex: 0,
+      payload: { type: 'MOVE', direction: 'down' },
+    });
+    expect(solved.modules[0].status).toBe('solved');
+    expect(solved.strikes).toBe(0);
+    // Illegal MOVE into a wall rolls up into a team strike and re-arms; light stays put.
+    const intoWall: BombState = {
+      context: CTX,
+      modules: [
+        {
+          moduleId: MAZES_MODULE_ID,
+          status: 'armed',
+          data: { mazeId: 0, start: { x: 0, y: 1 }, position: { x: 0, y: 1 }, target: { x: 5, y: 5 } },
+        },
+      ],
+      strikes: 0,
+      solved: false,
+    };
+    const struck = bombReducer(intoWall, {
+      type: 'MODULE_ACTION',
+      moduleIndex: 0,
+      payload: { type: 'MOVE', direction: 'right' },
+    });
+    expect(struck.modules[0].status).toBe('armed'); // transient 'struck' rolled up
+    expect(struck.strikes).toBe(1);
+    expect((struck.modules[0].data as MazesState).position).toEqual({ x: 0, y: 1 });
+    // Purity: the input bomb is untouched.
+    expect(mazeBomb.modules[0].status).toBe('armed');
   });
 
   it('dev-demo is registered in the production MODULE_REDUCERS map', () => {

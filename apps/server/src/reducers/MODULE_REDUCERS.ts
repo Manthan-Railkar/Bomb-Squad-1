@@ -6,6 +6,7 @@ import {
   KEYPADS_MODULE_ID,
   WHOS_ON_FIRST_MODULE_ID,
   WIRE_SEQUENCES_MODULE_ID,
+  MAZES_MODULE_ID,
   devDemoReducer,
   wiresReducer,
   buttonReducer,
@@ -13,6 +14,7 @@ import {
   keypadsReducer,
   whosOnFirstReducer,
   wireSequencesReducer,
+  mazesReducer,
   type ModuleState,
   type Reducer,
 } from '@bomb-squad/shared';
@@ -50,4 +52,8 @@ export const MODULE_REDUCERS: Record<string, ModuleReducer> = {
   // colour-occurrence rules; auto-solves when all should-cut wires are severed
   // (first genuinely stateful Medium module — CUT + NAV).
   [WIRE_SEQUENCES_MODULE_ID]: wireSequencesReducer as ModuleReducer,
+  // mazes: Story 6.4 — navigate a white light through an invisible-walled 6×6
+  // maze to the red triangle; a move into a wall or off-grid strikes (first
+  // module with a 2D navigable board; last Medium module).
+  [MAZES_MODULE_ID]: mazesReducer as ModuleReducer,
 };

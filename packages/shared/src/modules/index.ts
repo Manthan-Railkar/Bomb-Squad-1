@@ -13,4 +13,5 @@ export * from './passwords/index.js';
 export * from './keypads/index.js';
 export * from './whos-on-first/index.js';
 export * from './wire-sequences/index.js';
+export * from './mazes/index.js';
 export * from './registry.js';

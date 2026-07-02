@@ -129,13 +129,16 @@ describe('RoundConfigPanel — emits ROUND_CONFIGURE', () => {
 
 describe('RoundConfigPanel — module pool override', () => {
   it('disables un-implemented modules and enables the generatable set', () => {
-    seed({ config: { difficulty: 'medium' } });
+    // Mazes (6.4) completed the Medium tier, so every Medium module now has a
+    // generator — the last generator-less examples live in the Hard tier. Use a
+    // Hard difficulty so the pool surfaces one (Complicated Wires) as disabled.
+    seed({ config: { difficulty: 'hard' } });
     render(<RoundConfigPanel />);
     const pool = screen.getByRole('group', { name: 'Module pool' });
-    // Mazes (no generator yet) is present but disabled. Keypads (6.1), Who's on
-    // First (6.2) and Wire Sequences (6.3) gained generators, so they are no
-    // longer un-implemented examples — Mazes is the last generator-less Medium.
-    expect(within(pool).getByRole('button', { name: 'Mazes' })).toBeDisabled();
+    // Complicated Wires (no generator yet) is present but disabled.
+    expect(within(pool).getByRole('button', { name: 'Complicated Wires' })).toBeDisabled();
+    // Mazes (6.4) now has a generator → enabled.
+    expect(within(pool).getByRole('button', { name: 'Mazes' })).toBeEnabled();
     // Wires (generatable, in the default pool) is enabled and pressed.
     const wires = within(pool).getByRole('button', { name: 'Wires' });
     expect(wires).toBeEnabled();

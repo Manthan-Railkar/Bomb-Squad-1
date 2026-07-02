@@ -6,6 +6,7 @@ import {
   getKeypadsManualPages,
   getWhosOnFirstManualPages,
   getWireSequencesManualPages,
+  getMazesManualPages,
 } from '@bomb-squad/shared';
 
 /**
@@ -66,5 +67,8 @@ export const DEV_MANUAL_PAGES: ManualPage[] = [
   // Passwords: CANONICAL content from the module's getManualPages() (Story 5.5)
   // — the 35-word list renders from the same PASSWORD_WORDS the solver checks.
   ...getPasswordsManualPages(),
-  stub('mazes', 'Mazes'),
+  // Mazes: CANONICAL content from the module's getManualPages() (Story 6.4) —
+  // all 9 maze diagrams (walls + markers) render from the same MAZE_LAYOUTS the
+  // reducer reads, via the additive ManualSection.mazes structured field.
+  ...getMazesManualPages(),
 ];

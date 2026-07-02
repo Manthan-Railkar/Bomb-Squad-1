@@ -7,6 +7,7 @@ import { PASSWORDS_MODULE_ID } from './passwords/types.js';
 import { KEYPADS_MODULE_ID } from './keypads/types.js';
 import { WHOS_ON_FIRST_MODULE_ID } from './whos-on-first/types.js';
 import { WIRE_SEQUENCES_MODULE_ID } from './wire-sequences/types.js';
+import { MAZES_MODULE_ID } from './mazes/types.js';
 // Import each generator directly from its own file, NOT via the module barrel
 // (./<mod>/index.js → ../index.js), so the registry never depends on the barrel
 // that parallel module stories edit.
@@ -17,6 +18,7 @@ import { generatePasswords } from './passwords/generate.js';
 import { generateKeypads } from './keypads/generate.js';
 import { generateWhosOnFirst } from './whos-on-first/generate.js';
 import { generateWireSequences } from './wire-sequences/generate.js';
+import { generateMazes } from './mazes/generate.js';
 
 /**
  * A module's seeded instance generator. `seed` is the per-(team,slot) moduleSeed
@@ -67,6 +69,11 @@ export const MODULE_GENERATORS: Record<string, ModuleGenerator> = {
   // Generator + reducer + a medium/hard tier-pool entry land together (same
   // generateLayout requirement). Takes seed alone (no bomb-context rule).
   [WIRE_SEQUENCES_MODULE_ID]: generateWireSequences as ModuleGenerator,
+  // mazes: Story 6.4 — fourth (and last) MEDIUM-tier module; first module with a
+  // 2D navigable board. Generator + reducer + a medium/hard tier-pool entry land
+  // together (same generateLayout requirement). Takes seed alone (no
+  // bomb-context rule). Completes the Medium tier (TIER_POOLS.medium == catalog).
+  [MAZES_MODULE_ID]: generateMazes as ModuleGenerator,
 };
 
 /**
@@ -119,8 +126,10 @@ export const TIER_POOLS: Record<DifficultyTier, readonly string[]> = {
   // medium). Easy stays the canonical Easy trio.
   // whos-on-first (6.2) joins keypads as the second Medium module (medium + hard).
   // wire-sequences (6.3) is the third Medium module (medium + hard).
-  medium: ['wires', 'the-button', 'passwords', 'keypads', 'whos-on-first', 'wire-sequences'],
-  hard: ['wires', 'the-button', 'passwords', 'keypads', 'whos-on-first', 'wire-sequences'],
+  // mazes (6.4) is the fourth and LAST Medium module — it completes the Medium
+  // tier, so TIER_POOLS.medium now equals TIER_CATALOG.medium (medium + hard).
+  medium: ['wires', 'the-button', 'passwords', 'keypads', 'whos-on-first', 'wire-sequences', 'mazes'],
+  hard: ['wires', 'the-button', 'passwords', 'keypads', 'whos-on-first', 'wire-sequences', 'mazes'],
 };
 
 /**

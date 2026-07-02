@@ -1,5 +1,6 @@
-import type { ManualPage, ManualSection, ManualTable } from '@bomb-squad/shared';
+import type { ManualMaze, ManualPage, ManualSection, ManualTable } from '@bomb-squad/shared';
 import { splitColorWords, MANUAL_COLOR_INKS } from './colorWords.js';
+import { MazeDiagram } from './MazeDiagram.js';
 
 /**
  * Generic structured-data renderer: one ManualPage → paper-styled React (AC4).
@@ -65,6 +66,17 @@ function TableView({ table }: { table: ManualTable }) {
   );
 }
 
+/** A responsive grid of maze diagrams (used for the 9-up mazes page). */
+function MazeGridView({ mazes }: { mazes: ManualMaze[] }) {
+  return (
+    <div className="flex flex-wrap gap-4">
+      {mazes.map((maze, i) => (
+        <MazeDiagram key={i} maze={maze} />
+      ))}
+    </div>
+  );
+}
+
 function SectionView({ section }: { section: ManualSection }) {
   return (
     <section className="mb-5">
@@ -77,6 +89,12 @@ function SectionView({ section }: { section: ManualSection }) {
         </p>
       )}
       {section.table !== undefined && <TableView table={section.table} />}
+      {section.maze !== undefined && (
+        <div className="mb-3">
+          <MazeDiagram maze={section.maze} />
+        </div>
+      )}
+      {section.mazes !== undefined && <MazeGridView mazes={section.mazes} />}
     </section>
   );
 }

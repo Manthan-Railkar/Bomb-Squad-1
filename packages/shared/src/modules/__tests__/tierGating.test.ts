@@ -84,10 +84,11 @@ describe('TIER_DEFAULTS (recommended count + timer per tier)', () => {
 });
 
 describe('generatable subset (catalog ∩ generators)', () => {
-  it('the Easy trio plus keypads (6.1), whos-on-first (6.2) and wire-sequences (6.3) are generatable', () => {
+  it('the Easy trio plus the full Medium set (keypads, whos-on-first, wire-sequences, mazes) are generatable', () => {
     const generatable = TIER_CATALOG.hard.filter((id) => id in MODULE_GENERATORS);
     expect(generatable.sort()).toEqual([
       'keypads',
+      'mazes',
       'passwords',
       'the-button',
       'whos-on-first',
