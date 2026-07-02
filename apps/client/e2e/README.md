@@ -48,9 +48,12 @@ needed (WSL2/CI). **A blank canvas is a failure, not a reason to skip.**
   projects a named object's world position (plus an object-local offset)
   through the live camera to CSS pixels and clicks there; it waits per-frame
   until the projection is stable, so camera focus-jumps are safe.
-  `waitForBomb` / `waitForBombOrGone` poll the authoritative snapshot via the
-  dev-only `window.__E2E__` hook (`src/scenes/E2eSceneHook.tsx` — refs only,
-  zero logic, never mounted in production builds). Interactive meshes carry
+  `waitForBomb` / `waitForGame` poll the authoritative snapshot via the
+  Canvas-independent `window.__E2E_STATE__` hook (registered once from the App
+  bootstrap, so it survives the round-resolution unmount); `clickMesh` reads the
+  scene/camera through the Canvas-scoped `window.__E2E__` hook. Both live in
+  `src/scenes/E2eSceneHook.tsx` — refs only, zero logic, never mounted in
+  production builds. Interactive meshes carry
   module-scoped names (`bay-2`, `m0-wire-3`, `m1-key-0`, …) — data-driven,
   render-only.
 - **`helpers/sandbox.ts`** — `/dev/sandbox` drivers. `generateSandboxModule`
@@ -75,8 +78,10 @@ wait — never add a sleep**. Every wait in this suite is a condition: a locator
 a store predicate, a projection-stability check. `waitForTimeout` does not
 appear in specs and should not start to. Round resolution drops the bomb from
 the store the instant the last module solves — waits that straddle resolution
-must use `waitForBombOrGone`, and transient overlays (the 2s resolution banner)
-are asserted as `banner.or(next-surface)`, not as a timing lottery.
+gate on `session.status` via `waitForGame` (round-over is
+`status ∈ {between-rounds, ended}`, never "snapshot missing"), and transient
+overlays (the 2s resolution banner) are asserted as `banner.or(next-surface)`,
+not as a timing lottery.
 
 ## Which test layer?
 

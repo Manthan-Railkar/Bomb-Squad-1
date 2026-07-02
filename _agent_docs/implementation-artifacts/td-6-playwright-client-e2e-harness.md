@@ -12,7 +12,7 @@ context:
 
 # Story TD-6: Playwright Client E2E Harness + Test-Debt Catch-Up
 
-Status: review
+Status: done
 
 <!-- Tech-debt / tooling story (not from an epic). Sprint 5 retro Action Item 1:
      every 8.x story tripped on the same gap — "server logic correct, client
@@ -226,6 +226,31 @@ claude-fable-5 (gds-dev-story)
 - **NEW** `apps/client/e2e/flows/{full-session,between-rounds,retry-round}.spec.ts` — multiplayer flows (AC #5 + catch-up).
 - **NEW** `apps/client/e2e/modules/{wires,keypads,whos-on-first,wire-sequences}.spec.ts` — seeded sandbox canvas specs.
 - **NEW** `apps/client/e2e/README.md` — architecture, helpers, flake policy, layer guide, human boundary.
+
+## Review Findings
+
+_gds-code-review (3 adversarial layers: Blind Hunter, Edge Case Hunter, Acceptance Auditor) over the TD-6 commit `81e32e8` (`HEAD~1..HEAD`), 2026-07-02. 5 patch · 3 deferred · 2 dismissed. Two cross-layer disputes were resolved against the actual code (recorded under Dismissed)._
+
+_Post-patch verification (2026-07-02): client+e2e typecheck green; **3 consecutive full-suite greens — 10/10 in 36.2s / 34.6s / 36.7s**, zero leaked bot processes (P1's failure-path teardown fix reconfirmed the baseline after the helper changes)._
+
+### Patch
+
+- [x] [Review][Patch] Bot process-group leaks on the readiness-wait failure path [apps/client/e2e/helpers/session.ts:111] — FIXED: `stop` defined before the readiness wait; the wait is wrapped in try/catch that kills the detached group on throw. — `spawnBots` `await`s the roster-count assertion (line 111) BEFORE returning the `stop` handle (line 115). If that assertion times out (a bot fails to join / slow boot / a prior leak already storming the port), it throws, so `const bots = await spawnBots(...)` never binds and the spec's `finally { bots.stop() }` can't run — the detached process group survives and reconnect-storms port 3199, re-introducing the exact zombie-storm the detached-group teardown was built to prevent. With `retries: 1` it then poisons the retry attempt. Fix: wrap the readiness `await` in try/catch that kills the child on throw (or register `stop` before awaiting). [Blind — confirmed via code]
+- [x] [Review][Patch] `configureWiresOnly` hardcodes the two non-wires easy chips [apps/client/e2e/helpers/session.ts:153] — FIXED: scopes to the "Module pool" group, pins Wires ON, then deselects every enabled non-Wires chip generically (tier-agnostic). — deselects only `The Button`/`Passwords`. Correct at the default easy tier (only Wires/Button/Passwords chips render), but a latent landmine: if any spec sets difficulty medium/hard, the medium chips stay selected, the bomb can include a non-wires module, and `solveWiresBombInBrowser` (wires-only) never solves it → round never resolves → 60s timeout. Harden to deselect every chip except `Wires`. [Blind — low/latent]
+- [x] [Review][Patch] Vitest `exclude` overrides the built-in default set [apps/client/vite.config.ts:28] — FIXED: anchored to `**/node_modules/**` + `**/dist/**`. — `exclude: ['e2e/**','node_modules/**','dist/**']` replaces Vitest's default `**/node_modules/**`; the un-anchored `node_modules/**` would stop excluding any nested `node_modules`. No impact today (single top-level `node_modules`). Use `**/node_modules/**` + `**/dist/**`. [Edge — low]
+- [x] [Review][Patch] README references a nonexistent helper `waitForBombOrGone` [apps/client/e2e/README.md:51] — FIXED: replaced with the real `waitForBomb`/`waitForGame`; the straddle-resolution guidance now cites `waitForGame` gated on `session.status`. — no such function exists (real helpers are `waitForBomb`/`waitForGame`); the flake-policy line points contributors at a nonexistent API. Fix the doc. [Auditor — low]
+- [x] [Review][Patch] README mislabels the snapshot-wait hook [apps/client/e2e/README.md:51] — FIXED: the snapshot waits are now documented against `window.__E2E_STATE__` (Canvas-independent), with `clickMesh` on the Canvas-scoped `window.__E2E__`. — says the waits read `window.__E2E__`; they actually read `window.__E2E_STATE__` (the Canvas-independent hook). The doc contradicts the very `__E2E__`/`__E2E_STATE__` split that Completion Note #7 calls the story's key lesson. Fix the doc. [Auditor — low]
+
+### Deferred (real but guarded; not blocking)
+
+- [x] [Review][Defer] Projection stability loop + `clickMesh` opaque throw when a round resolves mid-solve [apps/client/e2e/helpers/canvas.ts:77] — deferred, guarded today (reducedMotion snap + 300s timer vs 240s budget + single solver)
+- [x] [Review][Defer] `gameServer` `void stop()` swallows an `io.close()` rejection [apps/client/e2e/servers/gameServer.ts:20] — deferred, Playwright reaps the process anyway
+- [x] [Review][Defer] In-memory server state (memoryRedis Map + unref'd timers) never reset between specs [apps/server/src/testing/bootTestServer.ts] — deferred, no concrete failure (fresh session per spec via a new join code)
+
+### Dismissed (verified false / non-defect)
+
+- `strikeOutWiresBomb` "may not reach 3 strikes" (Blind #2) — FALSE. The flow specs run at the easy default (`TIER_DEFAULTS.easy` moduleCount 3) with the pool restricted to Wires, so the bomb always has 3 wires modules × ≥2 wrong wires (`generateWires` yields 3–6 wires) = ≥6 wrong cuts. Edge Case Hunter's refutation confirmed against the code.
+- AC #4 revert-evidence "only narrative" (Auditor #3) — non-defect. The demonstration is recorded in the Debug Log and the spec structure (`error-surfacing.spec.ts` asserts `relay-complete` visible + no dead Start) is consistent with the claimed failure point; nothing to fix.
 
 ## Change Log
 

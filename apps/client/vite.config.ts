@@ -27,6 +27,6 @@ export default defineConfig({
     unstubGlobals: true,
     // Playwright owns e2e/ (its *.spec.ts import @playwright/test) — Vitest
     // must not collect them (TD-6). Everything Vitest runs lives under src/.
-    exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
+    exclude: ['e2e/**', '**/node_modules/**', '**/dist/**'],
   },
 });

@@ -108,21 +108,32 @@ export async function spawnBots(
     process.stderr.write(`[sim] ${d}`);
   });
 
-  await expect(facilitatorPage.getByTestId('roster').locator('li')).toHaveCount(
-    expectedRosterCount,
-    { timeout: 30_000 },
-  );
-  return {
-    stop: () => {
-      if (child.pid !== undefined) {
-        try {
-          process.kill(-child.pid, 'SIGTERM'); // the whole process group
-        } catch {
-          child.kill('SIGTERM');
-        }
+  const stop = (): void => {
+    if (child.pid !== undefined) {
+      try {
+        process.kill(-child.pid, 'SIGTERM'); // the whole process group
+      } catch {
+        child.kill('SIGTERM');
       }
-    },
+    }
   };
+
+  // Kill the detached group if the readiness wait throws. Otherwise a timeout
+  // here strands the bots: the caller's `const bots = await spawnBots(...)`
+  // never binds, so its `finally { bots.stop() }` can't run, and the leaked
+  // group reconnect-storms the fixed e2e port — the exact zombie-storm the
+  // detached-group teardown exists to prevent (and with `retries: 1` the retry
+  // would then run against the poisoned port).
+  try {
+    await expect(facilitatorPage.getByTestId('roster').locator('li')).toHaveCount(
+      expectedRosterCount,
+      { timeout: 30_000 },
+    );
+  } catch (err) {
+    stop();
+    throw err;
+  }
+  return { stop };
 }
 
 /** Facilitator: assign a rostered player (by display name) to a team chip. */
@@ -150,8 +161,26 @@ export async function setRole(
  * driven, so assert each deselection round-trips.
  */
 export async function configureWiresOnly(page: Page): Promise<void> {
-  for (const label of ['The Button', 'Passwords']) {
-    const chip = page.getByRole('button', { name: label, exact: true });
+  // Scope to the Module pool group and deselect EVERY enabled chip except Wires,
+  // whatever the tier's catalog holds. Hardcoding the non-wires labels silently
+  // fails the moment the difficulty is anything but easy — a medium/hard pool
+  // leaves other modules armed and the wires-only browser Defuser can never
+  // resolve the round.
+  const pool = page.getByRole('group', { name: 'Module pool' });
+  // Pin Wires ON first so deselecting the rest can never empty the pool
+  // (generation needs ≥1 module; the panel refuses to drop the last one).
+  const wires = pool.getByRole('button', { name: 'Wires', exact: true });
+  await expect(async () => {
+    if ((await wires.getAttribute('aria-pressed')) !== 'true') await wires.click();
+    await expect(wires).toHaveAttribute('aria-pressed', 'true', { timeout: 3_000 });
+  }).toPass({ timeout: 15_000 });
+
+  const chips = pool.getByRole('button');
+  const count = await chips.count();
+  for (let i = 0; i < count; i++) {
+    const chip = chips.nth(i);
+    if ((await chip.textContent())?.trim() === 'Wires') continue;
+    if (await chip.isDisabled()) continue; // non-generatable → never in the pool
     await expect(async () => {
       if ((await chip.getAttribute('aria-pressed')) === 'true') await chip.click();
       await expect(chip).toHaveAttribute('aria-pressed', 'false', { timeout: 3_000 });
