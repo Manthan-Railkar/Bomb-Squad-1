@@ -4,7 +4,7 @@ baseline_commit: d8e27bd7bf83595a3b6c3c9a7ab8a530dd17b880
 
 # Story 7.4: Morse Code Module
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -104,6 +104,16 @@ so that we solve a timing-interpretation module by decoding a flashing word to a
   - [x] `pnpm -r typecheck` clean (all 4 workspaces); `pnpm -r test` green (shared/server/client), including the new morse-code suite (all 16 table cells vs an independent expectation, alphabet spot-checks vs independently hard-coded codes, clamp/preserve-dial/never-born-solved/determinism).
   - [x] **Jay verifies interactively (human-verification AC rule — story is not done until his observed result is in Completion Notes):** in `/dev/sandbox`, generate a Morse Code module; confirm (a) the lamp flashes a looping pattern with legible dot/dash/letter-gap/word-gap distinctions; (b) decoding via `/dev/manual`'s chart and looking the word up, dialing to the listed frequency, and pressing TX solves the module; (c) TX on a wrong frequency records a strike AND leaves the dial where it was (no reset, transmission keeps looping without restarting); (d) dial clicks do NOT restart the flash loop mid-word; (e) dial clamps at 3.505 and 3.600 with no strike; (f) a Hard-tier live round (Facilitator picks Hard) can draw and solve Morse Code end-to-end.
 
+### Review Findings
+
+- [x] [Review][Patch] Independent alphabet expectation misses letters `m` and `n` — `bombs` uses `m`, `sting` uses `n`, but `EXPECTED_CODES` covers neither, and no other assertion (shape regex, `shell`/`beats` pattern checks) contains them; a transcription typo in `MORSE_ALPHABET['m']`/`['n']` would pass every test and silently garble two words' transmissions. Violates the story's own testing standard ("every letter used by the 16 words"). Add `m: '--'`, `n: '-.'` to `EXPECTED_CODES` and a `morsePatternForWord('bombs')`/`('sting')` assertion. [packages/shared/src/modules/morse-code/__tests__/morse-code.test.ts]
+- [x] [Review][Patch] Duplicate React keys in manual table header row — `headers.map((h) => <th key={h}>)` with the Morse chart's `['Character','Code','Character','Code']` produces duplicate sibling keys; key by index. [apps/client/src/modules/morse-code/ManualPages.tsx:20]
+- [x] [Review][Patch] Dial clamp uses strict equality, not a range check — an out-of-band `freqIndex` (e.g. corrupted Redis state: 16, or 0.5) never hits `=== 15`/`=== 0` and walks unboundedly; LCD then renders `NaN MHz` and TX can never solve. Use `>=`/`<=` clamps so the reducer is self-healing. [packages/shared/src/modules/morse-code/reducer.ts:45,50]
+- [x] [Review][Patch] Story record corrections — File List omits the modified `sprint-status.yaml`; and the claim "frequency readout re-renders only on `freqIndex` change via the memoized selector" overstates: `selectMorseModule` selects the whole module envelope, so any `MODULE_UPDATE` for this module re-renders the view (matches the sibling pattern and is fine — fix the wording, not the code). [_agent_docs/implementation-artifacts/7-4-morse-code-module.md]
+- [x] [Review][Defer] Client can forge `{type:'MODULE_RESET'}` through MODULE_INTERACT — the handler forwards the payload verbatim and every module guard accepts `MODULE_RESET`, so an armed module executes a lifecycle reset on client demand. Benign for Morse (self-sabotage only) but materially harmful on Memory (progress wipe). Fix belongs in `moduleHandlers.ts` (reject `MODULE_RESET` in client payloads), not per-module. [apps/server/src/handlers/moduleHandlers.ts:181] — deferred, pre-existing systemic pattern (since 7.2/7.3)
+- [x] [Review][Defer] `prefers-reduced-motion` sampled once per mount — toggling the OS setting mid-round has no effect until remount; identical pattern in Simon 7.2 and Memory 7.3, but Morse is the photosensitivity-relevant module. Fix as a pattern-level sweep (hold the MediaQueryList, read `.matches` per frame or subscribe). [apps/client/src/modules/morse-code/DefuserView.tsx:115] — deferred, pre-existing pattern
+- [x] [Review][Defer] A malformed `word` in a store snapshot throws inside `useMemo` (`morsePatternForWord`) during render and crashes the whole R3F canvas — no error boundary exists in the module render path; reducer-side input is guarded but render-side trusts store data. Architectural: add a module-level error boundary, not a per-module try/catch. [apps/client/src/modules/morse-code/DefuserView.tsx:109] — deferred, pre-existing architectural gap shared by all modules
+
 ## Dev Notes
 
 ### The module in one paragraph
@@ -200,7 +210,7 @@ Aligns with the established per-module layout (`project-context.md#Code Organiza
 - **Naming** — id `morse-code`; `MorseCodeState`; `MorseCodeAction`; `morseCodeReducer` export. [`project-context.md#Naming Conventions`]
 - **R3F** — `useFrame` only (never `setInterval`); no per-frame allocations; no reactive store reads in the loop; dispose is R3F-managed for primitives created in JSX. [`project-context.md#React / R3F Gotchas`]
 - **Morse-specific gotcha (line 219)** — lookup is word → frequency, NOT character-by-character decode → frequency; the full word must be decoded first. Bake this into the manual intro wording.
-- **60fps** — flash driving is one material-intensity write per frame off a precomputed timeline; frequency readout re-renders only on `freqIndex` change via the memoized selector. [`project-context.md#Performance Rules`]
+- **60fps** — flash driving is one material-intensity write per frame off a precomputed timeline; the view re-renders only on this module's own `MODULE_UPDATE`s (the memoized selector returns the module envelope — sibling pattern), never on other modules' traffic or per frame. [`project-context.md#Performance Rules`]
 
 ### References
 
@@ -271,6 +281,7 @@ claude-opus-4-8 (gds-dev-story workflow)
 - `apps/server/src/round/__tests__/initializeRoundBombs.test.ts` (fixture repoint → `keypads`)
 - `apps/server/src/reducers/__tests__/moduleRegistration.test.ts` (rogue-rebind id → `keypads`; + morse-code round-trip)
 - `packages/shared/src/modules/__tests__/tierGating.test.ts` (generatable subset widened)
+- `_agent_docs/implementation-artifacts/sprint-status.yaml` (7-4 → review; last_updated note)
 
 ## Change Log
 
@@ -280,3 +291,4 @@ claude-opus-4-8 (gds-dev-story workflow)
 | 2026-07-02 | Implemented Morse Code module (shared logic + client rendering + 3-place registration). Repointed the "unregistered id" fixture chain to `keypads` (Hard tier exhausted). All automated tests + typecheck green. Status → review (pending Jay interactive verification). |
 | 2026-07-02 | Manual polish (Jay feedback): Morse chart now renders as a compact two-pair `Char\|Code\|Char\|Code` table (18 rows, A–Z then 0–9) instead of a tall 36-row single column; intro condensed from two paragraphs to one — mirrors the printed manual's density. |
 | 2026-07-02 | Jay interactive verification CONFIRMED WORKING (Task 10): flash/dial/TX solve, wrong-TX strike with dial preserved, loop-uninterrupted-on-dial, clamps, and a Hard-tier live round all as specified. Human-verification AC satisfied. |
+| 2026-07-02 | Code review (3-layer adversarial): 4 patches applied — `m`/`n` added to the independent `EXPECTED_CODES` + coverage meta-guard + `bombs`/`sting` pattern assertions; index keys for the repeated manual header pair; reducer dial clamps widened `===`→`>=`/`<=` (self-healing on out-of-band state, + regression test); story record corrections. 3 systemic items deferred to `deferred-work.md` (client-forged MODULE_RESET via MODULE_INTERACT, mount-frozen reduced-motion sampling, missing module render error boundary). Shared 352 / server 563 / client 443 green, typecheck clean. Status → done. |

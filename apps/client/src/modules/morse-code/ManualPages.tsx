@@ -16,8 +16,9 @@ function Section({ section }: { section: ManualSection }) {
         <table className="border-collapse text-left">
           <thead>
             <tr>
-              {section.table.headers.map((h) => (
-                <th key={h} className="border border-current px-2 py-1">
+              {/* Index keys: the Morse chart repeats 'Character'/'Code' header pairs. */}
+              {section.table.headers.map((h, i) => (
+                <th key={i} className="border border-current px-2 py-1">
                   {h}
                 </th>
               ))}

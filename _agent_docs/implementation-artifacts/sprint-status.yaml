@@ -109,7 +109,7 @@ development_status:
   7-1-complicated-wires-module: review
   7-2-simon-says-module: done
   7-3-memory-module: done
-  7-4-morse-code-module: review
+  7-4-morse-code-module: done
   epic-7-retrospective: optional
 
   # ---- Epic 8: Game Loop & Scoring ----

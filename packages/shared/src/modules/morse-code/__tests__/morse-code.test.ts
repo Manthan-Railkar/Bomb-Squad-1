@@ -60,6 +60,8 @@ const EXPECTED_CODES: Readonly<Record<string, string>> = {
   i: '..',
   k: '-.-',
   l: '.-..',
+  m: '--',
+  n: '-.',
   o: '---',
   r: '.-.',
   s: '...',
@@ -124,6 +126,15 @@ describe('MORSE_ALPHABET / morsePatternForWord', () => {
     }
   });
 
+  it('EXPECTED_CODES covers every letter used by the 16 words (meta-guard)', () => {
+    // Review-7.4 finding: 'm' (bombs) and 'n' (sting) were missing — a typo in
+    // an uncovered letter would pass the suite. Guard the coverage itself.
+    const used = new Set([...MORSE_WORDS.join('')]);
+    for (const ch of used) {
+      expect(EXPECTED_CODES[ch]).toBeDefined();
+    }
+  });
+
   it('covers all 26 letters and 10 digits', () => {
     for (const ch of 'abcdefghijklmnopqrstuvwxyz0123456789') {
       expect(typeof MORSE_ALPHABET[ch]).toBe('string');
@@ -140,6 +151,8 @@ describe('MORSE_ALPHABET / morsePatternForWord', () => {
   it('encodes a word letter-by-letter', () => {
     expect(morsePatternForWord('shell')).toEqual(['...', '....', '.', '.-..', '.-..']);
     expect(morsePatternForWord('beats')).toEqual(['-...', '.', '.-', '-', '...']);
+    expect(morsePatternForWord('bombs')).toEqual(['-...', '---', '--', '-...', '...']);
+    expect(morsePatternForWord('sting')).toEqual(['...', '-', '..', '-.', '--.']);
   });
 
   it('handles every one of the 16 words without throwing', () => {
@@ -241,6 +254,14 @@ describe('morseCodeReducer — contract obligations (frozen inputs throughout)',
     expect(morseCodeReducer(top, { type: 'FREQ_UP' })).toBe(top);
     const bottom = armed('shell', 0);
     expect(morseCodeReducer(bottom, { type: 'FREQ_DOWN' })).toBe(bottom);
+  });
+
+  it('clamps out-of-band freqIndex too — never walks past the dial (review-7.4)', () => {
+    // Corrupted persisted state must not escape the range clamp.
+    const over = armed('beats', 16);
+    expect(morseCodeReducer(over, { type: 'FREQ_UP' })).toBe(over);
+    const under = armed('shell', -1);
+    expect(morseCodeReducer(under, { type: 'FREQ_DOWN' })).toBe(under);
   });
 
   it('a strike leaves the dial free to keep stepping and eventually solve', () => {

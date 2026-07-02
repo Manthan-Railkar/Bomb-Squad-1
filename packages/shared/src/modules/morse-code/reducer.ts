@@ -42,12 +42,14 @@ export const morseCodeReducer: Reducer<ModuleState<MorseCodeState>, unknown> = (
   if (state.status === 'solved') return state;
 
   if (action.type === 'FREQ_UP') {
-    if (data.freqIndex === MORSE_FREQUENCIES.length - 1) return state; // clamp at top (same ref)
+    // Range clamp (not ===): an out-of-band freqIndex in corrupted persisted
+    // state must not walk past the dial — the at/over-bound step is a no-op.
+    if (data.freqIndex >= MORSE_FREQUENCIES.length - 1) return state; // clamp at top (same ref)
     return { ...state, status: 'armed', data: { ...data, freqIndex: data.freqIndex + 1 } };
   }
 
   if (action.type === 'FREQ_DOWN') {
-    if (data.freqIndex === 0) return state; // clamp at bottom (same ref)
+    if (data.freqIndex <= 0) return state; // clamp at bottom (same ref)
     return { ...state, status: 'armed', data: { ...data, freqIndex: data.freqIndex - 1 } };
   }
 
