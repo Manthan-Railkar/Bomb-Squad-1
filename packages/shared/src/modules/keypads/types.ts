@@ -80,8 +80,10 @@ export type SymbolId = (typeof KEYPAD_SYMBOLS)[number];
  * Keypads table. `KEYPAD_COLUMNS[c]` is column c's seven symbol ids in
  * TOP-TO-BOTTOM order (index 0 = top). The order is load-bearing — it IS the
  * press order. Distinct symbols recur across columns (e.g. lambda-italic in
- * cols 1/2/3, hard-sign in cols 4/5), which is why a 4-subset CAN belong to two
- * columns; generation rejects any such non-unique instance (AC1).
+ * cols 1/2/3, hard-sign in cols 4/5), but no two columns share more than 3
+ * symbols (< KEY_COUNT) — the invariant that makes every 4-subset's solution
+ * column unambiguous (AC1). A pinned test asserts the pairwise overlap stays
+ * below KEY_COUNT; generation additionally verifies uniqueness per instance.
  *
  * ONE constant, THREE consumers: the generator picks a target column + 4
  * symbols, the solver finds the unique containing column and its top-to-bottom

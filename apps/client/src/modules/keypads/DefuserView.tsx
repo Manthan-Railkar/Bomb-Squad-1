@@ -19,7 +19,8 @@ import { KEYPADS_MODULE_ID, KEYPAD_SYMBOL_GLYPHS, type KeypadsState, type Symbol
  * Glyph rendering (AC3): each button shows its symbol's glyph via the
  * KEYPAD_SYMBOL_GLYPHS lookup (keyed by the opaque symbol id) — the single swap
  * point for the authoritative manual-p.7 asset. Ships with the GDD Unicode
- * approximations via drei Text + the vendored mono font.
+ * approximations via drei Text + vendored DejaVu Sans Bold (see GLYPH_FONT —
+ * the mono UI font lacks 15 of the 30 glyphs).
  *
  * Body budget: the bay faceplate is 0.8×0.55 and ModuleBay mounts this group at
  * [0, -0.04, faceZ] — the 2×2 grid stays within ~0.55×0.4, shallow z.

@@ -1,6 +1,6 @@
 import type { ModuleState, Reducer } from '../../types/index.js';
 import { isKeypadsAction, KEY_COUNT, type KeypadsState } from './types.js';
-import { solutionOrder } from './solve.js';
+import { isNextCorrect, solutionOrder } from './solve.js';
 
 /**
  * Pure reducer for the Keypads module.
@@ -21,9 +21,10 @@ import { solutionOrder } from './solve.js';
  *  - Never mutate input state; return new objects via spread/map.
  *  - 'struck' is TRANSIENT: the bomb reducer rolls it into a team strike and
  *    re-arms the module (4.3/5.3 roll-up contract).
- *  - solved-inert: actions on a solved module are no-ops.
- *  - MODULE_RESET (forwarded whole, bypassing the bomb reducer's solved guard)
- *    re-arms and clears `pressed` back to the generated start (empty).
+ *  - solved-inert: PRESS on a solved module is a no-op. MODULE_RESET is the one
+ *    deliberate exception (forwarded whole, bypassing the bomb reducer's solved
+ *    guard — the passwords template's semantics): it re-arms even a solved
+ *    module and clears `pressed` back to the generated start (empty).
  *  - No Date.now(), no Math.random(), no I/O — Keypads has no time dependency.
  */
 export const keypadsReducer: Reducer<ModuleState<KeypadsState>, unknown> = (state, action) => {
@@ -50,9 +51,12 @@ export const keypadsReducer: Reducer<ModuleState<KeypadsState>, unknown> = (stat
   if (state.data.pressed.includes(keyIndex)) return state;
 
   // Recompute the expected press order from the public column table (no stored
-  // answer). The next expected grid index is solutionOrder[pressed.length].
-  const order = solutionOrder(state.data.keys);
-  if (order[state.data.pressed.length] !== keyIndex) {
+  // answer). A malformed state whose keys don't resolve to exactly one column
+  // (never produced by generate — corrupted/persisted state, future data edits)
+  // yields an empty order; treat it as inert rather than striking every press
+  // forever (an unsolvable strike faucet MODULE_RESET couldn't cure).
+  if (solutionOrder(state.data.keys).length !== KEY_COUNT) return state;
+  if (!isNextCorrect(state.data, keyIndex)) {
     return { ...state, status: 'struck' }; // wrong order → strike, progress preserved
   }
 

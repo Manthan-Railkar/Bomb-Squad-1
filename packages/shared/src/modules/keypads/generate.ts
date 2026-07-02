@@ -12,11 +12,14 @@ import { countContainingColumns } from './solve.js';
  *  1. Pick a target column from the six (seeded).
  *  2. Choose 4 of its 7 symbols (seeded shuffle) — these are the four glyphs.
  *  3. Verify with countContainingColumns that EXACTLY ONE reference column
- *     contains all four (AC1 — the real risk: symbols recur across columns, so a
- *     4-subset CAN be contained in a second column, which would make the press
- *     order ambiguous). If not unique, re-pick target + subset from the SAME
- *     seeded stream and re-check. Deterministic given the seed; converges fast
- *     (most 4-subsets are unique to one column).
+ *     contains all four (AC1). NOTE: with the canonical table no two columns
+ *     share more than 3 symbols (< KEY_COUNT), so a 4-subset drawn from one
+ *     column can never be contained in a second — this check never rejects
+ *     today. It is a data-invariant firewall: a future column edit pushing a
+ *     pairwise overlap to 4 would make ambiguity possible, and the pinned
+ *     pairwise-overlap test in __tests__ fails loud before this loop ever has
+ *     to save us. If not unique, re-pick target + subset from the SAME seeded
+ *     stream and re-check. Deterministic given the seed.
  *  4. Place the four chosen symbols onto the four grid positions in a seeded
  *     random spatial arrangement — the on-screen 2×2 layout is independent of
  *     the solution order (which is derived from the column table, not position).

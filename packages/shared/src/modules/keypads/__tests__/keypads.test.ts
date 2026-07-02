@@ -77,6 +77,21 @@ describe('KEYPAD_COLUMNS / KEYPAD_SYMBOLS — table integrity (AC1, AC3)', () =>
     const cols = KEYPAD_COLUMNS.map((c, i) => (c.includes('lambda-italic') ? i : -1)).filter((i) => i >= 0);
     expect(cols).toEqual([0, 1, 2]);
   });
+
+  it('no two columns share KEY_COUNT or more symbols — the invariant that makes every 4-subset unambiguous (AC1)', () => {
+    // This is the property that actually guarantees AC1: a 4-subset drawn from
+    // one column can only be contained in a second column if the two columns
+    // share ≥ KEY_COUNT symbols. With the canonical table the max pairwise
+    // overlap is 3, so generation's per-instance uniqueness check never fires —
+    // it is a firewall. A column edit pushing an overlap to 4 must fail HERE,
+    // loudly, not rely on the probabilistic seed sweep to notice.
+    for (let a = 0; a < KEYPAD_COLUMNS.length; a++) {
+      for (let b = a + 1; b < KEYPAD_COLUMNS.length; b++) {
+        const overlap = KEYPAD_COLUMNS[a].filter((sym) => KEYPAD_COLUMNS[b].includes(sym)).length;
+        expect(overlap).toBeLessThan(KEY_COUNT);
+      }
+    }
+  });
 });
 
 describe('generateKeypads — determinism + uniqueness (AC1)', () => {
@@ -253,6 +268,45 @@ describe('keypadsReducer — contract obligations (frozen inputs throughout)', (
   it('MODULE_RESET on an already-armed, unpressed module is a structural no-op', () => {
     const s = stateForColumn(0, [0, 1, 2, 3], []);
     expect(keypadsReducer(s, { type: 'MODULE_RESET' })).toBe(s);
+  });
+
+  it('MODULE_RESET deliberately re-arms even a SOLVED module (passwords-template semantics)', () => {
+    // The one sanctioned exception to solved-inert: reset is forwarded whole,
+    // bypassing the bomb reducer's solved guard (sandbox Reset / bomb-level
+    // reset path) — pinned so a refactor reordering the guards fails loud.
+    const solved = solveInOrder(stateForColumn(0));
+    expect(solved.status).toBe('solved');
+    const reset = keypadsReducer(Object.freeze(solved), { type: 'MODULE_RESET' });
+    expect(reset.status).toBe('armed');
+    expect(reset.data.pressed).toEqual([]);
+    expect(reset.data.keys).toEqual(solved.data.keys); // layout preserved
+  });
+
+  it('a lingering struck status behaves like armed: correct press advances, wrong press stays struck', () => {
+    // 'struck' is transient (the bomb reducer re-arms), but the reducer must be
+    // safe standalone — a PRESS arriving while status is still 'struck' judges
+    // the order exactly as if armed.
+    const base = stateForColumn(3, [0, 1, 2, 3]);
+    const order = solutionOrder(base.data.keys);
+    const struck = Object.freeze({ ...base, status: 'struck' as const });
+    const advanced = keypadsReducer(struck, press(order[0]));
+    expect(advanced.status).toBe('armed');
+    expect(advanced.data.pressed).toEqual([order[0]]);
+    const struckAgain = keypadsReducer(struck, press(order[2]));
+    expect(struckAgain.status).toBe('struck');
+    expect(struckAgain.data.pressed).toEqual([]);
+  });
+
+  it('a malformed state whose keys resolve to no column is inert, not an unsolvable strike faucet', () => {
+    // Never produced by generate — corrupted/persisted state or a future data
+    // edit. Without the guard every in-bounds press would strike forever
+    // (solutionOrder returns [] → order[pressed.length] is undefined) and
+    // MODULE_RESET could not cure it.
+    const malformed = armed({ keys: ['copyright', 'omega', 'ae', 'star-solid'], pressed: [] });
+    expect(countContainingColumns(malformed.data.keys)).toBe(0);
+    for (let keyIndex = 0; keyIndex < KEY_COUNT; keyIndex++) {
+      expect(keypadsReducer(malformed, press(keyIndex))).toBe(malformed);
+    }
   });
 
   it('never mutates a frozen input state (immutability gate)', () => {

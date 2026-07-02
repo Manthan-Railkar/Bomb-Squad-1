@@ -27,8 +27,10 @@ export function countContainingColumns(keys: ReadonlyArray<SymbolId>): number {
 /**
  * The index of the UNIQUE reference column containing all four key symbols, or
  * -1 if there is not exactly one (a malformed instance — never produced by
- * generate, which enforces uniqueness). No answer is stored: this is recomputed
- * from the public column table each time.
+ * generate; with the canonical table the more-than-one case is unreachable
+ * since no two columns share ≥ KEY_COUNT symbols, so -1 in practice means "no
+ * containing column"). No answer is stored: this is recomputed from the public
+ * column table each time.
  */
 export function solutionColumn(keys: ReadonlyArray<SymbolId>): number {
   let found = -1;

@@ -4,7 +4,7 @@ baseline_commit: 59b2d94
 
 # Story 6.1: Keypads Module
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -58,6 +58,21 @@ So that we solve a symbol/spatial-vocabulary module by pressing four glyph butto
   - [x] Headless/runtime smoke: at minimum run the liveness smoke (`vite dev` boots, `/dev/sandbox` serves 200, `keypads` resolves in the module graph; build transforms cleanly). Record honestly what was and wasn't run; full visual confirmation folds into Task 8.
 - [x] Task 8 — Human verification (AC: 5)
   - [x] **Jay verifies interactively:** in `/dev/sandbox`, generate Keypads from a couple of seeds, read the reference columns in `/dev/manual`, identify the unique column, press the four buttons in top-to-bottom order → solve; press one out of order → strike + recovery; confirm the glyphs are legible/describable at normal zoom (AC3). Record his observed results item-by-item in Completion Notes — story is not done without this.
+
+### Review Findings
+
+Code review 2026-07-02 (Blind Hunter + Edge Case Hunter + Acceptance Auditor vs master...HEAD):
+
+- [x] [Review][Patch] Font glyph-coverage regression test (Jay decision 2026-07-02: option 1 — standalone script, no npm dep) — the blank-keycap defect (mono font missing 15/30 glyphs) already shipped once; add a dependency-free raw-TTF cmap check asserting the vendored DejaVu font covers every code point in `KEYPAD_SYMBOL_GLYPHS`, wired into the test run so a future font/lookup swap fails loud. [apps/client/public/fonts/dejavu-sans-bold.ttf + KEYPAD_SYMBOL_GLYPHS]
+- [x] [Review][Patch] Pin the real AC1 data invariant — max pairwise column intersection in `KEYPAD_COLUMNS` is 3 (< KEY_COUNT), so no 4-subset can ever be contained in two columns: the re-roll guard never fires and the 500-seed uniqueness sweep is vacuously green. Add a test asserting every column pair shares < KEY_COUNT symbols (the invariant that actually makes generation unambiguous — a future column edit pushing an overlap to 4 must fail loud), and correct the "a 4-subset CAN belong to two columns" comments/story claims. [packages/shared/src/modules/keypads/types.ts + __tests__/keypads.test.ts]
+- [x] [Review][Patch] Unsolvable strike-trap on malformed state — if `keys` don't resolve to exactly one column, `solutionOrder` returns `[]`, `order[pressed.length]` is `undefined`, and EVERY press strikes forever (infinite team-strike faucet, MODULE_RESET can't cure it). Add an `order.length === KEY_COUNT` guard returning state unchanged. Found independently by both hunters; unreachable via `generateKeypads`, real via corrupted/persisted state or future data edits. [packages/shared/src/modules/keypads/reducer.ts:~40]
+- [x] [Review][Patch] Vacuous header assertion — `expect(table?.headers.slice(0, KEYPAD_COLUMNS.length)).toHaveLength(KEYPAD_COLUMNS.length)` only proves ≥6 headers exist; assert actual header content and the trailing spacer. [apps/client/src/modules/__tests__/keypadsBinding.test.ts:~30]
+- [x] [Review][Patch] MODULE_RESET-on-solved semantics unspecified — the reset branch runs before the solved-inert guard (re-arms a solved module), contradicting the file's own "solved-inert" contract comment; no test pins either behavior. Pin the intended semantics with a test + reconcile the comments. [packages/shared/src/modules/keypads/reducer.ts:~25]
+- [x] [Review][Patch] Reducer re-implements `isNextCorrect` inline — the exported helper is only executed by its own test; the reducer duplicates the rule, so the two can drift. Call the helper from the reducer. [packages/shared/src/modules/keypads/reducer.ts + solve.ts]
+- [x] [Review][Patch] PRESS on a lingering `'struck'` state untested — the reducer treats `'struck'` like `'armed'` (documented transient, but the reducer is also documented "safe standalone"); add a test specifying the behavior. [packages/shared/src/modules/keypads/__tests__/keypads.test.ts]
+- [x] [Review][Patch] Stale DefuserView docstring — header comment still says glyphs ship "via drei Text + the vendored mono font"; the code uses DejaVu Sans Bold. [apps/client/src/modules/keypads/DefuserView.tsx:~5]
+- [x] [Review][Patch] Story record hygiene — Completion Notes assert both "Task 8 OBSERVED" and "Task 8 OUTSTANDING" (stale lines), and the File List omits committed binaries (`docs/KeepTalkingAndNobodyExplodes-BombDefusalManual-v1.pdf`, `docs/keypads-p7.png`, `docs/keypads-p7-table.png`). [_agent_docs/implementation-artifacts/6-1-keypads-module.md]
+- [x] [Review][Defer] Trailing spacer column baked into canonical shared manual data — `getKeypadsManualPages()` permanently carries an empty 7th column to dodge `PageRenderer`'s right-align-last-cell rule; any future consumer (export/print/alternate viewer) inherits the artifact. Deliberate, documented, Jay-verified workaround; the proper home is an alignment field on `ManualTable` — a viewer/type change out of this story's scope. [packages/shared/src/modules/keypads/manual.ts] — deferred, pre-existing viewer limitation
 
 ## Dev Notes
 
@@ -163,7 +178,7 @@ claude-opus-4-8 (gds-dev-story), in the `Ktane-sprint6` worktree (branch `sprint
 
 ### Completion Notes List
 
-**Implemented (Tasks 1–7 complete; Task 8 = Jay's interactive verify OUTSTANDING).**
+**Implemented (Tasks 1–8 complete — Task 8 observed 2026-07-02, see below).**
 
 - **Shared pure logic** (`packages/shared/src/modules/keypads/`): built on the passwords template file-for-file. `types.ts` carries the symbol vocabulary (`KEYPAD_SYMBOLS`, 30 distinct ids), the six reference columns (`KEYPAD_COLUMNS`, transcribed verbatim from the GDD Module 3 table, top-to-bottom order = press order), a `KEYPAD_SYMBOL_GLYPHS` id→{glyph,label} lookup (the single AC3 swap point), `KeypadsState { keys, pressed }`, `PRESS`/`MODULE_RESET` actions + `isKeypadsAction` guard. **No stored answer** (wires AI1 / passwords): each PRESS recomputes the expected order from the public column table.
 - **`generate.ts`**: seeded (`makeSeededRng`, no `Math.random`) — pick a target column, choose 4 of its 7 symbols (seeded Fisher–Yates), verify `countContainingColumns === 1` (re-pick target+subset from the same stream until unique — the AC1 crux), then a seeded spatial arrangement onto the 2×2 grid. `ctx` unused (no bomb-context rule, like passwords).
@@ -192,8 +207,6 @@ All five ACs observed on the DejaVu Unicode stopgap. The authoritative manual-p.
 - After story: `pnpm -r exec tsc --noEmit` → **0 errors, no @ts-ignore** (all 4 workspaces); `pnpm -r test` → **shared 272 / server 559 (+2 skipped) / client 434 (48 files)** green, no regressions; `pnpm --filter @bomb-squad/client build` → green (pre-existing chunk-size warning only).
 - Runtime liveness smoke: `vite dev` boots (ready in ~182ms), `/` and `/dev/sandbox` both serve HTTP 200, keypads transforms into the production module graph (739 modules) and `getModuleRenderer('keypads')` resolves (binding test). The SwiftShader screenshot rig is not in this worktree, so full visual confirmation folds into Task 8 (honest).
 
-**Task 8 (Jay interactive verify) OUTSTANDING** — per the human-verification AC rule the story stays `review` until Jay's observed results are recorded here.
-
 ### File List
 
 New (shared — pure logic + tests):
@@ -208,6 +221,10 @@ New (shared — pure logic + tests):
 New (client — assets):
 - `apps/client/public/fonts/dejavu-sans-bold.ttf` — broad-coverage glyph font (AC3 stopgap render)
 - `apps/client/public/fonts/DejaVu-LICENSE.txt` — its license (Bitstream Vera / public)
+
+New (docs — reference assets, committed with the story):
+- `docs/KeepTalkingAndNobodyExplodes-BombDefusalManual-v1.pdf` — manual v1 (authoritative glyph art, p.7)
+- `docs/keypads-p7.png` / `docs/keypads-p7-table.png` — rendered p.7 references
 
 New (client — rendering + binding):
 - `apps/client/src/modules/keypads/index.ts`
@@ -237,4 +254,4 @@ Modified (surgical, additive):
 - 2026-07-02: Story created (Scrum Master context engine — comprehensive developer guide). Status: ready-for-dev. Flagged the manual-p.7 custom-glyph asset as a Jay decision/prerequisite for AC3 (rule DATA fully specified in the GDD, so logic proceeds; only glyph VISUALS are blocked).
 - 2026-07-02: Manual v1 PDF provisioned by Jay at `docs/KeepTalkingAndNobodyExplodes-BombDefusalManual-v1.pdf` (copied into this worktree's `docs/`). AC3 glyph asset now available on page 7; remaining call is trace-to-font/SVG vs. Unicode stopgap (no longer a hard blocker).
 - 2026-07-02: AC3 follow-up after Jay's first interactive verify (a/b/c confirmed). Fixed two defects: (1) sandbox blank keycaps — the vendored mono font lacks 15/30 approximation glyphs, so vendored DejaVu Sans Bold (covers all 30) for the keypad `Text`; (2) `/dev/manual` Col 6 misalignment — appended a trailing spacer column so the viewer's right-align-last-column rule (untouched, load-bearing for other modules) lands on a blank. tsc clean; shared 272 / server 559 (+2 skipped) / client 434 green; dev server serves the new font (200). Stays `review` pending Jay's AC3 re-confirmation.
-- 2026-07-02: dev-story implementation (Tasks 1–7) COMPLETE → Status `review`. Added the Keypads module (shared pure logic + client render + registries + canonical `/dev/manual` content) on the passwords template. Renamed the module's column-count constant to `KEYPAD_COLUMN_COUNT` (shared-barrel collision with passwords' `COLUMN_COUNT`). Shipped the GDD Unicode-approximation glyph stopgap behind an id→glyph lookup (AC3 pending Jay's legibility confirmation). Fixed four tests that used `keypads` as an unregistered/un-implemented example. Gates: tsc 0 errors (4 workspaces); shared 272 / server 559 (+2 skipped) / client 434 green; client build green; `vite dev` + `/dev/sandbox` liveness 200. Task 8 (Jay interactive verify) OUTSTANDING — stays `review` until observed (human-verification AC rule).
+- 2026-07-02: CODE REVIEW (Blind Hunter + Edge Case Hunter + Acceptance Auditor) → Status `done`. 10 findings: 9 patched, 1 deferred (manual-table spacer column → deferred-work.md), 2 dismissed. Key corrections: (1) the "4-subset CAN belong to two columns" premise was FALSE — max pairwise column overlap is 3 (< KEY_COUNT), so the re-roll guard never fires; added a pinned pairwise-overlap invariant test (the property that actually guarantees AC1) and corrected the comments; (2) guarded the reducer against malformed keys resolving to no column (was an unsolvable every-press-strikes trap; now inert); (3) reducer now calls `isNextCorrect` instead of duplicating it; (4) pinned MODULE_RESET-re-arms-solved (passwords-template semantics) + press-on-lingering-struck with tests; (5) real header-content assertion in the binding test; (6) NEW dependency-free font cmap-coverage regression test (Jay decision: script-parse over dev-dep) — the blank-keycap defect class now fails in CI; (7) stale docstring + story-record hygiene (Task 8 contradiction removed, binaries added to File List). Gates re-run: tsc clean all 4 workspaces; shared 307 / server 560 (+2 skipped) / client 438 (50 files) green. Added the Keypads module (shared pure logic + client render + registries + canonical `/dev/manual` content) on the passwords template. Renamed the module's column-count constant to `KEYPAD_COLUMN_COUNT` (shared-barrel collision with passwords' `COLUMN_COUNT`). Shipped the GDD Unicode-approximation glyph stopgap behind an id→glyph lookup (AC3 pending Jay's legibility confirmation). Fixed four tests that used `keypads` as an unregistered/un-implemented example. Gates: tsc 0 errors (4 workspaces); shared 272 / server 559 (+2 skipped) / client 434 green; client build green; `vite dev` + `/dev/sandbox` liveness 200. Task 8 (Jay interactive verify) OUTSTANDING — stays `review` until observed (human-verification AC rule).
