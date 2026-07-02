@@ -35,7 +35,12 @@ function TableView({ table }: { table: ManualTable }) {
             {table.headers.map((header, i) => (
               <th
                 key={i}
-                className="border-b-2 pb-1.5 text-left font-mono text-[11px] font-bold uppercase tracking-[0.1em]"
+                className={`border-b-2 pb-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.1em] ${
+                  // Match the last column's right-aligned value cells (see TableView
+                  // <td>) so the header lines up with its column instead of hanging
+                  // left. Every other column is left-aligned header + cell.
+                  i === table.headers.length - 1 ? 'text-right' : 'text-left'
+                }`}
                 style={{ borderColor: '#211A12', color: '#8A7A5E' }}
               >
                 {header}

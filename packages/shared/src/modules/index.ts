@@ -10,4 +10,8 @@ export * from './dev-demo/index.js';
 export * from './wires/index.js';
 export * from './the-button/index.js';
 export * from './passwords/index.js';
+export * from './complicated-wires/index.js';
+export * from './simon-says/index.js';
+export * from './memory/index.js';
+export * from './morse-code/index.js';
 export * from './registry.js';

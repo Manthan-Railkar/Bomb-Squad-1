@@ -3,6 +3,10 @@ import { DEV_DEMO_MODULE } from './dev-demo/index.js';
 import { WIRES_MODULE } from './wires/index.js';
 import { BUTTON_MODULE } from './the-button/index.js';
 import { PASSWORDS_MODULE } from './passwords/index.js';
+import { COMPLICATED_WIRES_MODULE } from './complicated-wires/index.js';
+import { SIMON_SAYS_MODULE } from './simon-says/index.js';
+import { MEMORY_MODULE } from './memory/index.js';
+import { MORSE_CODE_MODULE } from './morse-code/index.js';
 
 /**
  * Module registration barrel — importing it (main.tsx does, once) registers
@@ -20,6 +24,19 @@ export const SANDBOX_MODULES: readonly SandboxModule[] = [
   WIRES_MODULE as SandboxModule,
   BUTTON_MODULE as SandboxModule,
   PASSWORDS_MODULE as SandboxModule,
+  COMPLICATED_WIRES_MODULE as SandboxModule,
+  SIMON_SAYS_MODULE as SandboxModule,
+  MEMORY_MODULE as SandboxModule,
+  MORSE_CODE_MODULE as SandboxModule,
 ];
 
-export { DEV_DEMO_MODULE, WIRES_MODULE, BUTTON_MODULE, PASSWORDS_MODULE };
+export {
+  DEV_DEMO_MODULE,
+  WIRES_MODULE,
+  BUTTON_MODULE,
+  PASSWORDS_MODULE,
+  COMPLICATED_WIRES_MODULE,
+  SIMON_SAYS_MODULE,
+  MEMORY_MODULE,
+  MORSE_CODE_MODULE,
+};

@@ -79,6 +79,27 @@ function wiresBomb(correctIndex: number, strikes: StrikeCount = 0): BombState {
   };
 }
 
+/**
+ * One simon-says module with a single-flash sequence, at the given team strike
+ * count. CTX_FIXED serial 'AB1CD2' contains a vowel → Table A. At 0 strikes a
+ * red flash maps to blue; at 1 strike it maps to yellow — used to prove the
+ * server stamps the AUTHORITATIVE strike count (Story 7.2, AC4).
+ */
+function simonBomb(strikes: StrikeCount = 0): BombState {
+  return {
+    context: CTX_FIXED,
+    modules: [
+      {
+        moduleId: 'simon-says',
+        status: 'armed',
+        data: { sequence: ['red'], stage: 1, progress: 0, ctx: CTX_FIXED },
+      },
+    ],
+    strikes,
+    solved: false,
+  };
+}
+
 describe('MODULE_INTERACT handler (Story 4.7)', () => {
   let server: TestSocketServer;
   let store: MemoryRedisStore;
@@ -167,6 +188,24 @@ describe('MODULE_INTERACT handler (Story 4.7)', () => {
     const persisted = JSON.parse(store.data.get(bombKey(sessionId, 'A'))!) as BombState;
     expect(persisted.solved).toBe(true);
     expect(persisted.modules[0].status).toBe('solved');
+  });
+
+  it('stamps the AUTHORITATIVE strike count onto the action, overriding a spoofed client value (Story 7.2, AC4)', async () => {
+    // Team already has 1 strike. Simon Table A: at 0 strikes red→blue, at 1
+    // strike red→yellow. The client spoofs strikeCount:0 while pressing yellow —
+    // wrong under the spoofed table, CORRECT under the real strike count.
+    await activeRound(simonBomb(1));
+
+    const updatePromise = nextEvent<ModuleUpdate>(maya, 'MODULE_UPDATE');
+    maya.emit('MODULE_INTERACT', {
+      teamId: 'A',
+      moduleIndex: 0,
+      action: { type: 'PRESS', color: 'yellow', strikeCount: 0 },
+    });
+
+    // Server used bomb.strikes (1), not the client's 0 → the press solves.
+    const update = await updatePromise;
+    expect(update.state.status).toBe('solved');
   });
 
   it('wrong cut → MODULE_UPDATE armed (post struck rollup) + STRIKE, no defuse', async () => {

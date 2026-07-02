@@ -3,10 +3,18 @@ import {
   WIRES_MODULE_ID,
   BUTTON_MODULE_ID,
   PASSWORDS_MODULE_ID,
+  COMPLICATED_WIRES_MODULE_ID,
+  SIMON_SAYS_MODULE_ID,
+  MEMORY_MODULE_ID,
+  MORSE_CODE_MODULE_ID,
   devDemoReducer,
   wiresReducer,
   buttonReducer,
   passwordsReducer,
+  complicatedWiresReducer,
+  simonSaysReducer,
+  memoryReducer,
+  morseCodeReducer,
   type ModuleState,
   type Reducer,
 } from '@bomb-squad/shared';
@@ -34,4 +42,19 @@ export const MODULE_REDUCERS: Record<string, ModuleReducer> = {
   [BUTTON_MODULE_ID]: buttonReducer as ModuleReducer,
   // passwords: Story 5.5 — cycle five columns to spell a listed word, SUBMIT.
   [PASSWORDS_MODULE_ID]: passwordsReducer as ModuleReducer,
+  // complicated-wires: Story 7.1 — first Hard module. Per-wire truth-table cut
+  // decision against the bomb's public edgework; cut every should-cut wire.
+  [COMPLICATED_WIRES_MODULE_ID]: complicatedWiresReducer as ModuleReducer,
+  // simon-says: Story 7.2 — second Hard module. Growing colour-flash sequence;
+  // the translation row is chosen by the live team strike count, which the
+  // MODULE_INTERACT handler stamps onto the action (server-authoritative).
+  [SIMON_SAYS_MODULE_ID]: simonSaysReducer as ModuleReducer,
+  // memory: Story 7.3 — third Hard module. A 5-stage sequential state machine; a
+  // wrong press resets to stage 1 (not a per-stage retry) and rolls up a strike.
+  // No live bomb state, so no MODULE_INTERACT enrichment is needed.
+  [MEMORY_MODULE_ID]: memoryReducer as ModuleReducer,
+  // morse-code: Story 7.4 — the last Hard module. A flashed word decoded to a
+  // frequency; the dial + TX solve (wrong TX = strike, dial preserved). No live
+  // bomb state, so no MODULE_INTERACT enrichment is needed (like memory).
+  [MORSE_CODE_MODULE_ID]: morseCodeReducer as ModuleReducer,
 };

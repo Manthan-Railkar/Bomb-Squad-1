@@ -84,8 +84,16 @@ describe('TIER_DEFAULTS (recommended count + timer per tier)', () => {
 });
 
 describe('generatable subset (catalog ∩ generators)', () => {
-  it('today only the Easy trio is generatable', () => {
+  it('the Easy trio plus all four Hard modules (complicated-wires 7.1, simon-says 7.2, memory 7.3, morse-code 7.4) are generatable', () => {
     const generatable = TIER_CATALOG.hard.filter((id) => id in MODULE_GENERATORS);
-    expect(generatable.sort()).toEqual(['passwords', 'the-button', 'wires']);
+    expect(generatable.sort()).toEqual([
+      'complicated-wires',
+      'memory',
+      'morse-code',
+      'passwords',
+      'simon-says',
+      'the-button',
+      'wires',
+    ]);
   });
 });

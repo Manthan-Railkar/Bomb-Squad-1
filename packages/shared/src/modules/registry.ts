@@ -4,6 +4,10 @@ import { DEV_DEMO_MODULE_ID } from './dev-demo/types.js';
 import { WIRES_MODULE_ID } from './wires/types.js';
 import { BUTTON_MODULE_ID } from './the-button/types.js';
 import { PASSWORDS_MODULE_ID } from './passwords/types.js';
+import { COMPLICATED_WIRES_MODULE_ID } from './complicated-wires/types.js';
+import { SIMON_SAYS_MODULE_ID } from './simon-says/types.js';
+import { MEMORY_MODULE_ID } from './memory/types.js';
+import { MORSE_CODE_MODULE_ID } from './morse-code/types.js';
 // Import each generator directly from its own file, NOT via the module barrel
 // (./<mod>/index.js → ../index.js), so the registry never depends on the barrel
 // that parallel module stories edit.
@@ -11,6 +15,10 @@ import { generateDevDemo } from './dev-demo/generate.js';
 import { generateWires } from './wires/generate.js';
 import { generateButton } from './the-button/generate.js';
 import { generatePasswords } from './passwords/generate.js';
+import { generateComplicatedWires } from './complicated-wires/generate.js';
+import { generateSimonSays } from './simon-says/generate.js';
+import { generateMemory } from './memory/generate.js';
+import { generateMorseCode } from './morse-code/generate.js';
 
 /**
  * A module's seeded instance generator. `seed` is the per-(team,slot) moduleSeed
@@ -50,6 +58,27 @@ export const MODULE_GENERATORS: Record<string, ModuleGenerator> = {
   // (Wires/Button/Passwords). Generator + reducer + tier-pool entry land
   // together (same generateLayout requirement as above).
   [PASSWORDS_MODULE_ID]: generatePasswords as ModuleGenerator,
+  // complicated-wires: Story 7.1 — first Hard-tier module. Generator + reducer +
+  // a hard tier-pool entry land together (a pool may only list modules with both,
+  // or generateLayout throws at ROUND_START). Per-wire attribute→code truth table
+  // evaluated against the bomb's public edgework (serial/ports/batteries).
+  [COMPLICATED_WIRES_MODULE_ID]: generateComplicatedWires as ModuleGenerator,
+  // simon-says: Story 7.2 — second Hard module. Growing colour-flash sequence
+  // translated through a table chosen by serial-vowel + live strike count.
+  // Generator + reducer + a Hard tier-pool entry land together (a pool may only
+  // list modules with both, or generateLayout throws at ROUND_START).
+  [SIMON_SAYS_MODULE_ID]: generateSimonSays as ModuleGenerator,
+  // memory: Story 7.3 — third Hard module. A 5-stage sequential state machine;
+  // each stage's correct button is resolved from the stage tables + the recorded
+  // press history (no live bomb state). Generator + reducer + a Hard tier-pool
+  // entry land together (a pool may only list modules with both, or
+  // generateLayout throws at ROUND_START).
+  [MEMORY_MODULE_ID]: generateMemory as ModuleGenerator,
+  // morse-code: Story 7.4 — the LAST Hard module, completing Epic 7's pool. A
+  // flashed word decoded to a frequency; the dial + TX solve. No live bomb state
+  // (like memory). Generator + reducer + a Hard tier-pool entry land together (a
+  // pool may only list modules with both, or generateLayout throws at ROUND_START).
+  [MORSE_CODE_MODULE_ID]: generateMorseCode as ModuleGenerator,
 };
 
 /**
@@ -82,18 +111,35 @@ export type ModuleId = (typeof MODULE_IDS)[number];
  * INTERIM COMPOSITION (Story 5.5): every pool ID must have a registered
  * generator in MODULE_GENERATORS (generateLayout enforces this and fails loud).
  * The real generatable Easy modules are `'wires'` (5.3), `'the-button'` (5.4)
- * and now `'passwords'` (5.5) — the canonical Easy trio. RE-EXPAND further as
- * modules land: keypads/whos-on-first/wire-sequences/mazes (medium) and the full
- * MODULE_IDS set (hard). The authoritative tier GATING (Easy/Medium/Hard supersets
- * surfaced in the dashboard) is owned by Story 8.1 — these defaults feed it; 8.1
- * reconciles this map. The canonical target composition is preserved in
- * `MODULE_IDS` + the per-story backlog. A Facilitator can still override with an
- * explicit `modulePool` (e.g. `['dev-demo']`).
+ * and now `'passwords'` (5.5) — the canonical Easy trio.
+ *
+ * WHO OWNS RE-EXPANSION (read before adding a module): Story 8.1 did NOT
+ * reconcile this map — it built `TIER_CATALOG` (display/gating metadata) + the
+ * facilitator dashboard, and deliberately left this runtime pool alone. There is
+ * no later reconciliation pass. **Each per-module story expands TIER_POOLS when
+ * its generator lands**, honouring the superset rule above: add the module to its
+ * home tier AND to every harder tier (e.g. a Medium module like keypads goes into
+ * BOTH `medium` and `hard`, because `hard ⊇ medium`). Targets as generators land:
+ * keypads/whos-on-first/wire-sequences/mazes (medium+hard) and complicated-wires/
+ * simon-says/memory/morse-code (hard). The canonical target composition is
+ * preserved in `TIER_CATALOG` + `MODULE_IDS` + the per-story backlog. A Facilitator
+ * can still override with an explicit `modulePool` (e.g. `['dev-demo']`).
  */
 export const TIER_POOLS: Record<DifficultyTier, readonly string[]> = {
   easy: ['wires', 'the-button', 'passwords'],
   medium: ['wires', 'the-button', 'passwords'],
-  hard: ['wires', 'the-button', 'passwords'],
+  // complicated-wires (7.1) is the first Hard-only module — added to `hard` alone
+  // (leave easy/medium untouched; a Hard module is not a superset member of the
+  // easier tiers). This flips 8.1's dashboard chip from disabled to selectable.
+  hard: [
+    'wires',
+    'the-button',
+    'passwords',
+    'complicated-wires',
+    'simon-says',
+    'memory',
+    'morse-code',
+  ],
 };
 
 /**
