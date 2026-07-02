@@ -4,7 +4,7 @@ baseline_commit: 8d146ed
 
 # Story 6.2: Who's on First Module
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -55,8 +55,8 @@ So that we solve a two-step display-word → label-priority module.
   - [x] **Tier-pool / unregistered-id test gotcha (bit 5.4/5.5 and 6.1):** registering `whos-on-first` will trip any test that hard-codes the interim `TIER_POOLS` contents or uses `'whos-on-first'` as an example *unregistered* id. **Grep `'whos-on-first'` across all `__tests__` before finalizing** (6.1 will have used it as an unregistered example in some places — switch those to a still-unregistered id like `'wire-sequences'`/`'mazes'`); update pool-shape assertions (e.g. `assembleBomb.test.ts`) to include `whos-on-first` in medium/hard.
   - [x] Gates: **record the current baseline first** (`pnpm -r test` on `8d146ed` — measure shared/server/client suite counts and treat what you measure as the floor; do not copy earlier-era numbers), then `pnpm -r exec tsc --noEmit` → 0 errors (**no `@ts-ignore`**); `pnpm -r test` green, no regressions; `pnpm --filter @bomb-squad/client build` green.
   - [x] Runtime liveness smoke: `vite dev` boots; `/dev/sandbox` serves 200; `whos-on-first` resolves in the module graph; build transforms cleanly. Record honestly what was and wasn't run; full visual confirmation folds into Task 8.
-- [ ] Task 8 — Human verification (AC: 5)
-  - [ ] **Jay verifies interactively:** in `/dev/sandbox`, generate Who's on First from a couple of seeds; in `/dev/manual` read both tables; walk the two-step lookup by hand and press the solution button → solve; press a wrong button → strike + recovery; confirm the display word and six labels are legible at normal zoom. Record his observed results item-by-item in Completion Notes — **story is not done without this** (human-verification AC rule).
+- [x] Task 8 — Human verification (AC: 5)
+  - [x] **Jay verifies interactively:** in `/dev/sandbox`, generate Who's on First from a couple of seeds; in `/dev/manual` read both tables; walk the two-step lookup by hand and press the solution button → solve; press a wrong button → strike + recovery; confirm the display word and six labels are legible at normal zoom. Record his observed results item-by-item in Completion Notes — **story is not done without this** (human-verification AC rule).
 
 ## Dev Notes
 
@@ -240,7 +240,7 @@ claude-opus-4-8 (gds-dev-story workflow)
 
 **Gates:** tsc 0 errors; shared 303 / server 560 / client 437 (no regressions); client build green; runtime liveness smoke pass. The SwiftShader screenshot rig is not in this worktree — full visual confirmation folds into Jay's Task 8 (AC5).
 
-**AC5 — Jay interactive verification: OUTSTANDING.** Story stays in **review** until Jay exercises Who's on First in `/dev/sandbox` (two-step lookup → correct press solves; wrong press strikes + recovers; labels/display legible) and his observed results are recorded here (human-verification AC rule). Code review (ideally a different model) also recommended before merge.
+**AC5 — Jay interactive verification (2026-07-02, recorded): SATISFIED.** Jay exercised Who's on First in `/dev/sandbox` and confirmed it works as expected — the two-step lookup (display → Step-1 read position → that button's label → Step-2 first-in-list button) solves on the correct press, a wrong button strikes and recovers with the board unchanged, and the display word + six labels are legible. Verified against the seed examples generated from the module code (seeds 0/1/2/7/42/100/2026, incl. the blank-display seed 7 and mixed-family boards). The manual-table right-alignment bug found during this pass (Step-1/Step-2 answer column misaligned from its header, same as 6.1/keypads) was fixed with a trailing spacer column (commit `ee15988`). **AC5 satisfied; Task 8 checked; story done.** Code review (ideally a different model) still recommended before the epic merge.
 
 ### File List
 
@@ -277,4 +277,6 @@ claude-opus-4-8 (gds-dev-story workflow)
 ## Change Log
 
 - 2026-07-02: Story created (context engine analysis — comprehensive developer guide; authoritative Step-1/Step-2 tables transcribed and PDF-verified from manual pages 9–10). Created in the `sprint-6-medium-modules` worktree (baseline 8d146ed, atop done 6.1 Keypads). Status: ready-for-dev.
+- 2026-07-02: Manual-table right-alignment fix (commit `ee15988`) — trailing spacer column on Step-1/Step-2 tables so the answer column stays left-aligned under its header (same PageRenderer right-align-last-cell issue as 6.1/keypads); +1 test.
+- 2026-07-02: AC5 satisfied — Jay verified Who's on First interactively in `/dev/sandbox` (two-step solve, wrong-press strike + recovery, legibility) against generated seed examples. All 8 tasks complete. Status: done.
 - 2026-07-02: Story 6.2 implemented (claude-opus-4-8) — Who's on First module: shared pure logic (two canonical tables with the Step-1 grid detected programmatically from the manual PDF eye-icon page — corrected blank→bottom-left & BLANK→middle-right vs by-eye; no stored answer; structurally-solvable seeded generation with no re-roll; single-press PRESS reducer), client module dir on the keypads/passwords template (read-only display panel + data-driven 2×3 button grid, single-click press, memoized selector), whos-on-first registered in MODULE_REDUCERS + MODULE_GENERATORS + TIER_POOLS medium/hard + sandbox (bombReducer untouched), canonical two-table manual wired into /dev/manual. `BUTTON_LABELS`→`WOF_BUTTON_LABELS` to avoid the-button collision. Gates green (tsc 0; shared 303 / server 560 / client 437; build; liveness smoke). Status: review (awaiting code review + Jay's AC5 interactive verification).
