@@ -4,15 +4,19 @@ import {
   WIRES_MODULE_ID,
   BUTTON_MODULE_ID,
   PASSWORDS_MODULE_ID,
+  KEYPADS_MODULE_ID,
   devDemoReducer,
   generateDevDemo,
   generateWires,
   solveWires,
+  generateKeypads,
+  solutionOrder,
   type BombContext,
   type BombState,
   type ButtonState,
   type ModuleState,
   type PasswordsState,
+  type KeypadsState,
 } from '@bomb-squad/shared';
 import { createBombReducer, bombReducer } from '../bombReducer.js';
 import { MODULE_REDUCERS, type ModuleReducer } from '../MODULE_REDUCERS.js';
@@ -188,6 +192,35 @@ describe('open/closed module registration (AC2)', () => {
       type: 'MODULE_ACTION',
       moduleIndex: 0,
       payload: { type: 'SUBMIT' },
+    });
+    expect(struck.modules[0].status).toBe('armed'); // transient 'struck' rolled up
+    expect(struck.strikes).toBe(1);
+  });
+
+  it('keypads (6.1) is registered and solves/strikes through the untouched bomb reducer', () => {
+    expect(MODULE_REDUCERS[KEYPADS_MODULE_ID]).toBeDefined();
+    // Recompute the press order from the public column table (no stored answer).
+    const data: KeypadsState = generateKeypads(7);
+    const order = solutionOrder(data.keys);
+    const keypadsBomb: BombState = {
+      context: CTX,
+      modules: [{ moduleId: KEYPADS_MODULE_ID, status: 'armed', data }],
+      strikes: 0,
+      solved: false,
+    };
+    // Press all four in order → solved with no strike.
+    let solved: BombState = keypadsBomb;
+    for (const keyIndex of order) {
+      solved = bombReducer(solved, { type: 'MODULE_ACTION', moduleIndex: 0, payload: { type: 'PRESS', keyIndex } });
+    }
+    expect(solved.modules[0].status).toBe('solved');
+    expect(solved.strikes).toBe(0);
+    // An out-of-order first press rolls up into a team strike and re-arms.
+    const wrongFirst = order[1]; // not the expected first press
+    const struck = bombReducer(keypadsBomb, {
+      type: 'MODULE_ACTION',
+      moduleIndex: 0,
+      payload: { type: 'PRESS', keyIndex: wrongFirst },
     });
     expect(struck.modules[0].status).toBe('armed'); // transient 'struck' rolled up
     expect(struck.strikes).toBe(1);

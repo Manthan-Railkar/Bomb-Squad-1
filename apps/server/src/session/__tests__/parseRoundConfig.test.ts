@@ -74,10 +74,12 @@ describe('parseRoundConfig — range and shape validation', () => {
   });
 
   it('rejects a modulePool id with no registered generator', () => {
-    const res = parseRoundConfig({ ...fullConfig, modulePool: ['keypads'] }, { full: true });
+    // 'complicated-wires' (Epic 7) is still unregistered — keypads gained a
+    // generator in Story 6.1, so it is no longer an un-generatable example.
+    const res = parseRoundConfig({ ...fullConfig, modulePool: ['complicated-wires'] }, { full: true });
     expect(res.ok).toBe(false);
     if (res.ok) return;
-    expect(res.message).toMatch(/keypads/);
+    expect(res.message).toMatch(/complicated-wires/);
   });
 
   it('rejects a non-object config', () => {

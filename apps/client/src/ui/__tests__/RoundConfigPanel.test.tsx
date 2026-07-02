@@ -132,8 +132,9 @@ describe('RoundConfigPanel — module pool override', () => {
     seed({ config: { difficulty: 'medium' } });
     render(<RoundConfigPanel />);
     const pool = screen.getByRole('group', { name: 'Module pool' });
-    // Keypads (no generator yet) is present but disabled.
-    expect(within(pool).getByRole('button', { name: 'Keypads' })).toBeDisabled();
+    // Who's on First (no generator yet) is present but disabled. Keypads gained a
+    // generator in Story 6.1, so it is no longer an un-implemented example.
+    expect(within(pool).getByRole('button', { name: "Who's on First" })).toBeDisabled();
     // Wires (generatable, in the default pool) is enabled and pressed.
     const wires = within(pool).getByRole('button', { name: 'Wires' });
     expect(wires).toBeEnabled();

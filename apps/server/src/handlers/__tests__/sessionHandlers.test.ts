@@ -2497,10 +2497,12 @@ describe('ROUND_CONFIGURE handler (Story 8.1)', () => {
   it('un-generatable pool id → INVALID_PAYLOAD (fails here, not at round start)', async () => {
     await createSession(facilitator);
     const errorPromise = nextEvent<ErrorPayload>(facilitator, 'ERROR');
-    facilitator.emit('ROUND_CONFIGURE', { config: { ...fullConfig, modulePool: ['keypads'] } } as never);
+    // 'complicated-wires' (Epic 7) is still unregistered — keypads gained a
+    // generator in Story 6.1, so it is no longer an un-generatable example.
+    facilitator.emit('ROUND_CONFIGURE', { config: { ...fullConfig, modulePool: ['complicated-wires'] } } as never);
     const error = await errorPromise;
     expect(error.code).toBe('INVALID_PAYLOAD');
-    expect(error.message).toMatch(/keypads/);
+    expect(error.message).toMatch(/complicated-wires/);
   });
 
   it('a partial config (missing fields) → INVALID_PAYLOAD (ROUND_CONFIGURE needs a full config)', async () => {

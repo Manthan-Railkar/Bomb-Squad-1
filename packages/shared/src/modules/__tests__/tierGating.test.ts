@@ -84,8 +84,8 @@ describe('TIER_DEFAULTS (recommended count + timer per tier)', () => {
 });
 
 describe('generatable subset (catalog ∩ generators)', () => {
-  it('today only the Easy trio is generatable', () => {
+  it('the Easy trio plus keypads (6.1) are generatable', () => {
     const generatable = TIER_CATALOG.hard.filter((id) => id in MODULE_GENERATORS);
-    expect(generatable.sort()).toEqual(['passwords', 'the-button', 'wires']);
+    expect(generatable.sort()).toEqual(['keypads', 'passwords', 'the-button', 'wires']);
   });
 });

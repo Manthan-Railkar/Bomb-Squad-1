@@ -1,5 +1,10 @@
 import type { ManualPage } from '@bomb-squad/shared';
-import { getWiresManualPages, getButtonManualPages, getPasswordsManualPages } from '@bomb-squad/shared';
+import {
+  getWiresManualPages,
+  getButtonManualPages,
+  getPasswordsManualPages,
+  getKeypadsManualPages,
+} from '@bomb-squad/shared';
 
 /**
  * DEV FIXTURES for `/dev/manual` ONLY — not game content.
@@ -31,7 +36,10 @@ export const DEV_MANUAL_PAGES: ManualPage[] = [
   // The Button: CANONICAL content from the module's getManualPages() (Story 5.4)
   // — the decision + release tables render from the same data the solver uses.
   ...getButtonManualPages(),
-  stub('keypads', 'Keypads'),
+  // Keypads: CANONICAL content from the module's getManualPages() (Story 6.1)
+  // — the six-column reference table renders from the same KEYPAD_COLUMNS the
+  // solver uses.
+  ...getKeypadsManualPages(),
   stub('simon-says', 'Simon Says'),
   // Long chapter → exercises per-chapter scroll memory (AC2).
   {
