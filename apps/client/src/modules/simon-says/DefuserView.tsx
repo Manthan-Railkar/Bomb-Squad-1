@@ -20,15 +20,21 @@ import {
  * (`sequence`, `stage`); the translation/answer lives server-side and is never
  * present here (the Defuser sees only the raw flashes, which is by design).
  *
- * COLORBLIND FLOOR (AC5, NFR11/UX-DR14): every panel carries its letter label
- * (R/B/G/Y) in bright mono ink, and a flash is signalled by the panel AND its
- * label brightening together — colour is never the only cue. Flashes are
- * discrete on/off steps (no easing), which also satisfies reduced-motion.
+ * COLORBLIND FLOOR (AC5, NFR11/UX-DR14): every panel carries its persistent
+ * letter label (R/B/G/Y) in dark mono ink, and a flash is a large discrete
+ * luminance step of the whole panel face behind it — a brightness signal, so
+ * hue is never the only cue. Flashes are discrete on/off steps (no easing),
+ * which also satisfies reduced-motion.
  *
- * PLAYBACK RESTART: whenever the revealed set changes (a correct stage grows it,
- * or a strike replays it), the flash halts IMMEDIATELY, holds a short quiet
- * lead-in, then replays from the first flash — so no stray mid-flash blink
- * leaks across a state change.
+ * PLAYBACK RESTART: on ANY module update (a grown stage, a strike, an accepted
+ * press — the store hands a fresh module object each time), the flash halts
+ * IMMEDIATELY, holds a short quiet lead-in, then replays from the first flash —
+ * so no stray mid-flash blink leaks across a state change (behaviour verified
+ * interactively, Story 7.2 Completion Notes).
+ *
+ * SOLVED: a solved module goes quiescent — no playback, and presses neither
+ * animate nor dispatch (server/sandbox reducers are solved-inert anyway; this
+ * just stops dead traffic and a forever-looping flash).
  *
  * PRESS FEEDBACK: a click depresses the panel and brightens it briefly, so the
  * Defuser sees the press register regardless of whether the server accepts it.
@@ -64,13 +70,17 @@ const PRESS_HOLD = 0.16; // seconds the press feedback lingers
 /** Flash timing (seconds). Discrete on/off — reduced-motion safe by design. */
 const FLASH_ON = 0.45;
 const FLASH_GAP = 0.28;
-const CYCLE_PAUSE = 1.1; // quiet gap before a steady loop repeats
+const CYCLE_PAUSE = 1.1; // extra pause after the last flash's gap (loop quiet gap = FLASH_GAP + CYCLE_PAUSE)
 const RESTART_PAUSE = 1.0; // quiet lead-in after any module-state change
 
-function selectSimonData(moduleIndex: number) {
-  return (s: ReturnType<typeof useGameStore.getState>): SimonSaysState | null => {
+/** Panel colours in a stable module-scope array — never rebuilt per frame. */
+const PANEL_COLORS = Object.keys(PANEL_POS) as SimonColor[];
+
+/** Select the whole module envelope — the view needs `status` (solved) + `data`. */
+function selectSimonModule(moduleIndex: number) {
+  return (s: ReturnType<typeof useGameStore.getState>) => {
     const mod = s.bomb?.modules[moduleIndex];
-    return mod?.moduleId === SIMON_SAYS_MODULE_ID ? (mod.data as SimonSaysState) : null;
+    return mod?.moduleId === SIMON_SAYS_MODULE_ID ? mod : null;
   };
 }
 
@@ -85,11 +95,13 @@ function flashAt(t: number, revealed: readonly SimonColor[]): SimonColor | null 
 }
 
 export function SimonSaysDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
-  const selector = useMemo(() => selectSimonData(moduleIndex), [moduleIndex]);
-  const data = useGameStore(selector);
+  const selector = useMemo(() => selectSimonModule(moduleIndex), [moduleIndex]);
+  const mod = useGameStore(selector);
+  const data = (mod?.data as SimonSaysState | undefined) ?? null;
 
   const clock = useRef(-RESTART_PAUSE);
   const lastData = useRef<SimonSaysState | null>(null);
+  const revealed = useRef<readonly SimonColor[]>([]);
   const pressed = useRef<{ color: SimonColor; remaining: number } | null>(null);
   const materials = useRef<Partial<Record<SimonColor, MeshStandardMaterial | null>>>({});
   const groups = useRef<Partial<Record<SimonColor, Group | null>>>({});
@@ -97,21 +109,27 @@ export function SimonSaysDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
 
   // Drive playback + press feedback off the frame clock (never setInterval).
   useFrame((_, delta) => {
-    const revealed = data ? data.sequence.slice(0, data.stage) : [];
-
     // Reset playback on ANY module-state change — the store hands us a fresh
     // `data` object on every MODULE_UPDATE, so this catches a grown stage, a
     // strike (stage/sequence unchanged, only progress resets), and every press
     // alike: stop flashing now, hold a short quiet lead-in, then replay from the
     // first flash. (A string signature over stage/sequence missed strikes.)
+    // The revealed slice is computed HERE, only on change — never per frame
+    // (project-context: no new objects inside useFrame). A solved module goes
+    // quiescent: nothing left to play back.
     if (data !== lastData.current) {
       lastData.current = data;
       clock.current = -RESTART_PAUSE;
+      revealed.current =
+        data && mod?.status !== 'solved' ? data.sequence.slice(0, data.stage) : [];
     }
 
     // Reduced motion softens the tempo but keeps the discrete steps.
     clock.current += reduced ? delta * 0.6 : delta;
-    const lit = clock.current >= 0 && revealed.length > 0 ? flashAt(clock.current, revealed) : null;
+    const lit =
+      clock.current >= 0 && revealed.current.length > 0
+        ? flashAt(clock.current, revealed.current)
+        : null;
 
     // Decay the press-feedback timer.
     if (pressed.current) {
@@ -120,7 +138,7 @@ export function SimonSaysDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
     }
     const held = pressed.current?.color ?? null;
 
-    for (const color of Object.keys(PANEL_POS) as SimonColor[]) {
+    for (const color of PANEL_COLORS) {
       const mat = materials.current[color];
       if (mat) {
         mat.emissiveIntensity =
@@ -135,9 +153,13 @@ export function SimonSaysDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
 
   return (
     <group>
-      {(Object.keys(PANEL_POS) as SimonColor[]).map((color) => {
+      {PANEL_COLORS.map((color) => {
         const [x, y] = PANEL_POS[color];
         const press = moduleClickHandlers(() => {
+          // Solved modules are inert — no press animation, no dead traffic
+          // (live-store read at click time, mirroring wires' canChange gate).
+          const live = useGameStore.getState().bomb?.modules[moduleIndex];
+          if (live?.status === 'solved') return;
           // Local press feedback fires immediately (independent of the server's
           // accept/reject) so the Defuser sees the click land.
           pressed.current = { color, remaining: PRESS_HOLD };

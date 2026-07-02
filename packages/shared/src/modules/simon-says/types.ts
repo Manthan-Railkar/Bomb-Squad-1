@@ -94,6 +94,9 @@ export function isSimonSaysAction(action: unknown): action is SimonSaysAction | 
   return (
     typeof color === 'string' &&
     (SIMON_COLORS as readonly string[]).includes(color) &&
-    typeof strikeCount === 'number'
+    // Integer only: NaN/Infinity/fractional pass `typeof === 'number'` but slip
+    // through the reducer's 0..2 clamp and index SIMON_TABLES with undefined —
+    // the guard must uphold never-throw for the standalone (sandbox) reducer.
+    Number.isInteger(strikeCount)
   );
 }

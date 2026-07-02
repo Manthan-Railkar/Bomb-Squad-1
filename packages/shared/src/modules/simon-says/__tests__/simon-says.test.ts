@@ -31,6 +31,17 @@ const VOWEL_CTX: BombContext = {
 /** Serial 'BCXKZ4' has NO vowel → Table B. */
 const NO_VOWEL_CTX: BombContext = { ...VOWEL_CTX, serialNumber: 'BCXKZ4' };
 
+// Deep-freeze the ctx fixtures too: ctx is stored by reference and shared
+// bomb-wide, so a reducer mutation of it would corrupt every module — exactly
+// the object the immutability gate must cover (Testing Standards: freeze
+// data, sequence, AND ctx).
+for (const ctx of [VOWEL_CTX, NO_VOWEL_CTX]) {
+  Object.freeze(ctx);
+  Object.freeze(ctx.indicators);
+  for (const ind of ctx.indicators) Object.freeze(ind);
+  Object.freeze(ctx.ports);
+}
+
 const press = (color: SimonColor, strikeCount: number): SimonSaysAction => ({
   type: 'PRESS',
   color,
@@ -220,6 +231,27 @@ describe('simonSaysReducer — contract obligations (frozen inputs throughout)',
     expect(simonSaysReducer(state, press('blue', 0)).status).toBe('solved');
   });
 
+  it('a mid-stage strike re-selects the row for the remaining presses of the same stage', () => {
+    // The headline mechanic at its trickiest: a team strike lands (e.g. from
+    // another module) BETWEEN two presses of the same stage, so the remaining
+    // presses are judged under a different row than the ones already accepted.
+    // sequence [red, green] at stage 2. A0: red→blue, green→yellow. A1: green→blue.
+    const stage2 = armed(['red', 'green'], VOWEL_CTX, 2, 0);
+
+    // First press judged under row 0: red→blue, correct, mid-stage.
+    const mid = simonSaysReducer(stage2, press('blue', 0));
+    expect(mid.status).toBe('armed');
+    expect(mid.data.progress).toBe(1);
+    Object.freeze(mid.data);
+    Object.freeze(mid);
+
+    // A strike lands elsewhere; the server stamps strikeCount 1 on the next press.
+    // The OLD row's answer (A0: green→yellow) is now wrong…
+    expect(simonSaysReducer(mid, press('yellow', 1)).status).toBe('struck');
+    // …and the NEW row's answer (A1: green→blue) completes the stage → solved.
+    expect(simonSaysReducer(mid, press('blue', 1)).status).toBe('solved');
+  });
+
   it('uses Table B when the serial has no vowel', () => {
     // B0: red→blue, blue→yellow. Single flash blue → expects yellow press.
     const state = armed(['blue'], NO_VOWEL_CTX);
@@ -265,6 +297,9 @@ describe('simonSaysReducer — contract obligations (frozen inputs throughout)',
       { type: 'PRESS', color: 'purple', strikeCount: 0 }, // invalid colour
       { type: 'PRESS', color: 'red' }, // missing strikeCount
       { type: 'PRESS', color: 'red', strikeCount: '0' }, // non-number strikeCount
+      { type: 'PRESS', color: 'red', strikeCount: NaN }, // NaN survives typeof-number
+      { type: 'PRESS', color: 'red', strikeCount: Infinity }, // non-finite
+      { type: 'PRESS', color: 'red', strikeCount: 1.5 }, // fractional → bad table row
     ];
     for (const action of bad) {
       expect(simonSaysReducer(state, action)).toBe(state);
@@ -299,6 +334,9 @@ describe('isSimonSaysAction', () => {
     expect(isSimonSaysAction({ type: 'PRESS', color: 'red' })).toBe(false);
     expect(isSimonSaysAction({ type: 'PRESS', color: 'pink', strikeCount: 0 })).toBe(false);
     expect(isSimonSaysAction({ type: 'PRESS', color: 'red', strikeCount: '0' })).toBe(false);
+    expect(isSimonSaysAction({ type: 'PRESS', color: 'red', strikeCount: NaN })).toBe(false);
+    expect(isSimonSaysAction({ type: 'PRESS', color: 'red', strikeCount: Infinity })).toBe(false);
+    expect(isSimonSaysAction({ type: 'PRESS', color: 'red', strikeCount: 1.5 })).toBe(false);
   });
 });
 

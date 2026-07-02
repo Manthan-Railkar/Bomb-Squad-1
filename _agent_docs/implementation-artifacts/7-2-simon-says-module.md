@@ -4,7 +4,7 @@ baseline_commit: ad7ad22975a57802cab1f832afd8c5e131329851
 
 # Story 7.2: Simon Says Module
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -93,6 +93,16 @@ so that we solve a sequence module whose colour mapping changes with the live st
 - [x] **Task 11 — Full verification**
   - [x] `pnpm -r typecheck` clean (all 4 workspaces); `pnpm -r test` green (shared/server/client), including the new suite covering all six table rows.
   - [x] **Jay verifies interactively (human-verification AC rule — story is not done until his observed result is in Completion Notes):** in `/dev/sandbox`, generate a Simon Says module; confirm (a) the flash sequence plays and grows by one after a correct stage; (b) using the manual, a correct translated run solves it; (c) a wrong press strikes AND the mapping shifts to the next strike row (visible by the correct answer changing); (d) colour labels are legible; (e) a Hard-tier live round (Facilitator picks Hard, module drawn from the pool) reaches the module and solves end-to-end.
+
+### Review Findings
+
+- [x] [Review][Patch] `isSimonSaysAction` accepts `strikeCount: NaN`/non-integer and the reducer then throws in `simonTranslate` — violates the "guard, never throw" contract [packages/shared/src/modules/simon-says/types.ts:97] — tighten the guard to `Number.isInteger(strikeCount)` and add `NaN`/`Infinity`/`1.5` to the malformed-action test list. Unreachable in production (server stamps 0|1|2) but the shared reducer must be safe standalone (sandbox). (blind+edge+auditor)
+- [x] [Review][Patch] `DefuserView` never reads module `status` — a solved module keeps looping the full flash sequence forever and clicks still dispatch `MODULE_INTERACT` with press feedback [apps/client/src/modules/simon-says/DefuserView.tsx:100] — gate playback and the click dispatch on `status !== 'solved'` (mirror wires' `canChange` live-store read). (blind+edge)
+- [x] [Review][Patch] Per-frame allocations in `useFrame`: `data.sequence.slice(0, data.stage)` and `Object.keys(PANEL_POS)` allocate every frame — violates the project-context "no new objects inside useFrame" rule [apps/client/src/modules/simon-says/DefuserView.tsx:100] — compute `revealed` inside the `data !== lastData` branch and hoist the panel-colour array to a module constant. (blind)
+- [x] [Review][Patch] Immutability test freezes `data`/`sequence`/envelope but never freezes `ctx` (or its nested `indicators`/`ports`) — a ctx mutation would pass, and `ctx` is the bomb-wide shared object where mutation is most catastrophic [packages/shared/src/modules/simon-says/__tests__/simon-says.test.ts armed() helper] — deep-freeze the ctx fixtures. (auditor+blind)
+- [x] [Review][Patch] Mid-stage strike-row switch untested: no test covers a strike landing between press 1 and press 2 of the same stage (remaining presses judged under the new row) — the module's headline mechanic [packages/shared/src/modules/simon-says/__tests__/simon-says.test.ts] — add a multi-flash-stage reducer test varying `strikeCount` between presses. (blind)
+- [x] [Review][Patch] Comment/code mismatches in DefuserView: header claims "panel AND its label brightening together" but only the panel mesh's `emissiveIntensity` changes (label ink is constant), and `CYCLE_PAUSE`'s "quiet gap" comment understates the actual gap (`FLASH_GAP + CYCLE_PAUSE` = 1.38 s) [apps/client/src/modules/simon-says/DefuserView.tsx:24] — fix the comments (or implement the label-emphasis cue if preferred; AC5 holds either way per audit). (auditor+blind)
+- [x] [Review][Defer] Sandbox stays playable past the 3rd strike — `devDispatch` saturates `strikes` at 3 with no detonation, so Simon clamps 3→row 2, a mapping the manual never defines [apps/client/src/sandbox/devDispatch.ts:65] — deferred, pre-existing sandbox design shared by all modules, not introduced by this story. (edge)
 
 ## Dev Notes
 
@@ -242,3 +252,4 @@ claude-opus-4-8 (gds-dev-story workflow) — implemented in the `sprint-7-hard-m
 | Date | Change |
 |---|---|
 | 2026-07-02 | Implemented Simon Says module (Story 7.2, Tasks 1–10 + Task 11 code-gate) in the sprint-7-hard-modules worktree. All 4 workspaces typecheck clean; shared 289 / server 561 / client 437 tests green; client build clean. Task 11 interactive verify (Jay) outstanding — status → review. |
+| 2026-07-02 | Adversarial code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor): all 7 ACs verified satisfied, 0 AC violations. 6 patch findings applied (integer-only strikeCount guard + NaN/Infinity/1.5 tests; solved-quiescent DefuserView playback + click gate; per-frame allocations removed from useFrame; ctx deep-frozen in immutability tests; mid-stage strike-row-switch reducer test; comment accuracy fixes), 1 deferred (sandbox playable past 3rd strike — pre-existing), 6 dismissed. Shared 290 / server 561 / client 437 green; typecheck clean. Status → done. |
