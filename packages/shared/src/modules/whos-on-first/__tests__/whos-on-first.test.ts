@@ -272,4 +272,17 @@ describe('getWhosOnFirstManualPages — generated from the same tables as the so
       expect(listStr).toBe(LABEL_PRIORITIES[label].join(', '));
     }
   });
+
+  it('both tables carry a trailing spacer column so the answer column stays left-aligned under its header', () => {
+    for (const section of pages[0].sections) {
+      const table = section.table!;
+      // last header is the empty spacer (absorbs PageRenderer's right-align rule)
+      expect(table.headers[table.headers.length - 1]).toBe('');
+      // every row has the same trailing spacer, so real columns are not the "last cell"
+      for (const row of table.rows) {
+        expect(row).toHaveLength(table.headers.length);
+        expect(row[row.length - 1]).toBe('');
+      }
+    }
+  });
 });
