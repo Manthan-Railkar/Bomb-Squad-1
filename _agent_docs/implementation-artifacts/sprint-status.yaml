@@ -129,7 +129,7 @@ development_status:
 
   # ---- Epic 9: Advanced Features ----
   epic-9: in-progress                                # first story (9-1) created 2026-07-03 → epic in-progress
-  9-1-asymmetric-expert-roles: ready-for-dev         # story file created 2026-07-03 (gds-create-story)
+  9-1-asymmetric-expert-roles: review                # dev-story complete 2026-07-03 (Tasks 1–7); shared+server+client green, typecheck clean; human verification (Jay) pending
   9-2-spectator-lifeline-token-economy: backlog
   9-3-send-a-lifeline-hint: backlog
   9-4-spectator-lounge-view: backlog

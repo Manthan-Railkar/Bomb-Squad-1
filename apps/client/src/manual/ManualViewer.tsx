@@ -28,9 +28,17 @@ const PAPER_GRAIN_URL =
 
 interface ManualViewerProps {
   chapters: ManualChapter[];
+  /**
+   * Asymmetric Expert Roles (Story 9.1). `undefined`/`null` = full access (every
+   * chapter unlocked — the default). A non-null set restricts this Expert: only
+   * its chapter ids are navigable; every other chapter is SHOWN-LOCKED (still
+   * listed with its canonical number, but greyed, non-clickable, and out of
+   * search / arrow navigation).
+   */
+  assignedChapterIds?: string[] | null;
 }
 
-export default function ManualViewer({ chapters }: ManualViewerProps) {
+export default function ManualViewer({ chapters, assignedChapterIds }: ManualViewerProps) {
   const storedChapterId = useUiStore((s) => s.manualChapterId);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -39,10 +47,24 @@ export default function ManualViewer({ chapters }: ManualViewerProps) {
   const scrollMemoryRef = useRef(new Map<string, number>());
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Resolve the effective chapter: stored position if it exists in this
-  // manual, else the first chapter (e.g. first open, or stale id).
+  // Story 9.1: a chapter is locked iff a restriction is present and it is not in
+  // the assigned set. `navigable` is the subset the Expert may actually reach —
+  // adjacency, search, and the initial/current resolution all route through it,
+  // so arrows/`/`-search skip locked chapters. The FULL `chapters` array stays
+  // the sidebar/numbering source (canonical chapter numbers are preserved).
+  const restricted = assignedChapterIds != null;
+  const isLocked = (chapterId: string): boolean =>
+    restricted && !assignedChapterIds!.includes(chapterId);
+  const navigable = restricted
+    ? chapters.filter((c) => assignedChapterIds!.includes(c.chapterId))
+    : chapters;
+
+  // Resolve the effective chapter through the NAVIGABLE set: stored position if
+  // it is still navigable, else the first navigable chapter. This also guards a
+  // stored id that points at a now-locked chapter (navigable last round) — it
+  // falls back to the first assigned chapter rather than showing a locked one.
   const current =
-    chapters.find((c) => c.chapterId === storedChapterId) ?? chapters[0] ?? null;
+    navigable.find((c) => c.chapterId === storedChapterId) ?? navigable[0] ?? null;
 
   // Assert the resolved position into the observable store once it differs
   // (first open / stale id), so spectator mirroring never sees null mid-view.
@@ -76,14 +98,14 @@ export default function ManualViewer({ chapters }: ManualViewerProps) {
       switch (event.key) {
         case 'ArrowLeft':
         case 'PageUp': {
-          const prev = adjacentChapterId(chapters, current.chapterId, -1);
+          const prev = adjacentChapterId(navigable, current.chapterId, -1);
           if (prev !== null) selectChapter(prev);
           event.preventDefault();
           break;
         }
         case 'ArrowRight':
         case 'PageDown': {
-          const next = adjacentChapterId(chapters, current.chapterId, 1);
+          const next = adjacentChapterId(navigable, current.chapterId, 1);
           if (next !== null) selectChapter(next);
           event.preventDefault();
           break;
@@ -97,11 +119,12 @@ export default function ManualViewer({ chapters }: ManualViewerProps) {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-    // Re-bind only when the manual or active chapter changes — not on every
-    // render (e.g. search keystrokes). `selectChapter` is recreated each render
-    // but reads only refs + props, so the closure captured here stays correct
-    // as long as `current`/`chapters` are in the dep set.
-  }, [chapters, current]);
+    // Re-bind only when the manual, active chapter, or restriction changes — not
+    // on every render (e.g. search keystrokes). `selectChapter` is recreated each
+    // render but reads only refs + props, so the closure captured here stays
+    // correct as long as `current`/`chapters`/`assignedChapterIds` are in the dep
+    // set (the last so arrow nav re-routes through a changed navigable set).
+  }, [chapters, current, assignedChapterIds]);
 
   // Focus the search input the moment it opens (keyboard-first flow).
   useEffect(() => {
@@ -116,17 +139,20 @@ export default function ManualViewer({ chapters }: ManualViewerProps) {
     );
   }
 
-  const visibleChapters = searchOpen ? searchChapters(chapters, query) : [...chapters];
+  // Search runs over the NAVIGABLE set only (Story 9.1) — a locked chapter is
+  // never a search hit. Not searching: show the FULL manual (locked chapters
+  // greyed in place, so canonical numbers stay legible).
+  const visibleChapters = searchOpen ? searchChapters(navigable, query) : [...chapters];
   // Chapter numbers come from position in the FULL manual, not the filtered list.
   const numberOf = (chapterId: string) =>
     chapters.findIndex((c) => c.chapterId === chapterId) + 1;
   const currentIndex = numberOf(current.chapterId);
-  const prevId = adjacentChapterId(chapters, current.chapterId, -1);
-  const nextId = adjacentChapterId(chapters, current.chapterId, 1);
+  const prevId = adjacentChapterId(navigable, current.chapterId, -1);
+  const nextId = adjacentChapterId(navigable, current.chapterId, 1);
 
   const onSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
-      const top = searchChapters(chapters, query)[0];
+      const top = searchChapters(navigable, query)[0];
       if (top !== undefined) selectChapter(top.chapterId);
       event.preventDefault();
     } else if (event.key === 'Escape') {
@@ -159,16 +185,25 @@ export default function ManualViewer({ chapters }: ManualViewerProps) {
         <nav className="flex flex-1 flex-col gap-0.5" aria-label="Manual chapters">
           {visibleChapters.map((chapter) => {
             const active = chapter.chapterId === current.chapterId;
+            // Story 9.1: a locked chapter is listed (canonical number preserved)
+            // but disabled — greyed, non-clickable, and removed from the tab order
+            // (`disabled` also drops it from focus/keyboard). It is never `active`
+            // because `current` is always resolved from the navigable set.
+            const locked = isLocked(chapter.chapterId);
             return (
               <button
                 key={chapter.chapterId}
                 type="button"
-                onClick={() => selectChapter(chapter.chapterId)}
+                disabled={locked}
+                aria-disabled={locked || undefined}
+                onClick={locked ? undefined : () => selectChapter(chapter.chapterId)}
                 aria-current={active ? 'page' : undefined}
                 className={`flex items-center gap-3.5 rounded-md px-3.5 py-2 text-left font-manual text-md transition-colors ${
-                  active
-                    ? 'bg-surface-manual font-semibold text-ink-manual shadow-[0_2px_10px_rgba(0,0,0,0.3)]'
-                    : 'text-ink-muted hover:bg-white/5 hover:text-ink-primary'
+                  locked
+                    ? 'cursor-default text-ink-muted opacity-40'
+                    : active
+                      ? 'bg-surface-manual font-semibold text-ink-manual shadow-[0_2px_10px_rgba(0,0,0,0.3)]'
+                      : 'text-ink-muted hover:bg-white/5 hover:text-ink-primary'
                 }`}
               >
                 <span

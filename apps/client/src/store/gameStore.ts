@@ -41,6 +41,15 @@ interface GameState {
   /** Human-readable notice to surface on Landing after a forced return (e.g. the
    * facilitator removed this client — Story 2.7). Read-then-cleared by Landing. */
   removalNotice: string | null;
+  /**
+   * This Expert's assigned manual chapters for a round restricted by the
+   * `asymmetricExpertRoles` modifier (Story 9.1). `null` = full access (the
+   * default, and every non-restricted round) — the manual is unlocked. A non-null
+   * array locks every chapter NOT in it. Set by the EXPERT_CHAPTER_ASSIGNMENT
+   * event; reset to `null` on every new round (setBomb) and on clearSession so a
+   * prior round's restriction never bleeds into an unrestricted one.
+   */
+  assignedChapterIds: string[] | null;
   setSession: (session: SessionState) => void;
   /** Record this client's durable playerId (from SESSION_IDENTITY or a stored seed). */
   setMyPlayerId: (playerId: string | null) => void;
@@ -61,6 +70,8 @@ interface GameState {
    */
   applyModuleUpdate: (update: ModuleUpdate) => void;
   setStrike: (payload: StrikePayload) => void;
+  /** Set (or clear, with `null`) this Expert's restricted chapter set (Story 9.1). */
+  setAssignedChapters: (chapterIds: string[] | null) => void;
   setConnection: (connection: 'disconnected' | 'connecting' | 'connected') => void;
 }
 
@@ -83,6 +94,7 @@ export const useGameStore = create<GameState>((set) => ({
   connection: 'disconnected',
   myPlayerId: null,
   removalNotice: null,
+  assignedChapterIds: null,
 
   setSession: (session) => set({ session }),
   setMyPlayerId: (myPlayerId) => set({ myPlayerId }),
@@ -95,11 +107,15 @@ export const useGameStore = create<GameState>((set) => ({
       scoreboard: null,
       myPlayerId: null,
       removalNotice: notice ?? null,
+      assignedChapterIds: null,
     }),
   clearRemovalNotice: () => set({ removalNotice: null }),
   // A fresh bomb (BOMB_INIT) means a new round — clear any prior resolution AND
   // the stale between-rounds scoreboard so neither bleeds into the next round.
-  setBomb: (bomb) => set({ bomb, resolution: null, scoreboard: null }),
+  // Also clear the Story 9.1 chapter restriction: the assignment event (if the
+  // new round restricts) arrives right after BOMB_INIT and re-sets it, so an
+  // unrestricted round is left with full manual access (null).
+  setBomb: (bomb) => set({ bomb, resolution: null, scoreboard: null, assignedChapterIds: null }),
   setTimer: (timer) => set({ timer }),
   setResolution: (resolution) => set({ resolution }),
   setScoreboard: (scoreboard) => set({ scoreboard }),
@@ -132,6 +148,8 @@ export const useGameStore = create<GameState>((set) => ({
       }
       return { bomb: { ...s.bomb, strikes }, timer };
     }),
+
+  setAssignedChapters: (assignedChapterIds) => set({ assignedChapterIds }),
 
   setConnection: (connection) => set({ connection }),
 }));

@@ -14,6 +14,13 @@ import type {
   ScoreboardPayload,
 } from '@bomb-squad/shared';
 import { buildFinalScoreboard } from '@bomb-squad/shared';
+import {
+  CHAPTER_IDS,
+  allocateExpertChapters,
+  deriveTemplateSeed,
+  deriveTeamSeed,
+  makeSeededRng,
+} from '@bomb-squad/shared';
 import type { RedisStore } from '../state/redis.js';
 import type { PostgresArchive } from '../persistence/index.js';
 import { sessionKey, joinCodeKey, roundKey, timerKey, bombKey } from '../state/keys.js';
@@ -538,6 +545,21 @@ async function restoreReattachedSocket(
           if (timer !== null && bomb !== null) {
             socket.emit('BOMB_INIT', bomb);
             socket.emit('TIMER_UPDATE', timer);
+          }
+          // Story 9.1: re-restrict a reconnecting Expert. Read the current round
+          // and, if this player has a persisted chapter assignment, re-send it
+          // AFTER BOMB_INIT (same ordering as ROUND_START, so the client's
+          // setBomb reset lands first). Self-guarded — an unrestricted round has
+          // no `chapterAssignments`, so this is a no-op there.
+          const round = await deps.redis.getJSON<RoundState>(
+            roundKey(sessionId, latest.roundNumber),
+          );
+          const chapterIds = round?.chapterAssignments?.[playerId];
+          if (chapterIds !== undefined) {
+            socket.emit('EXPERT_CHAPTER_ASSIGNMENT', {
+              roundNumber: latest.roundNumber,
+              chapterIds,
+            });
           }
         } catch (replayErr) {
           deps.log.info(
@@ -1447,6 +1469,46 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
         // the identical bomb regenerates (Story 8.8 reused-seed guarantee intact).
         const pairIndex = pairIndexFor(result.round.roundNumber);
 
+        // Story 9.1: Asymmetric Expert Roles. When the modifier is on AND the
+        // active team has ≥2 Experts, deal the 11 canonical manual chapters
+        // round-robin across those Experts so the manual is split and the team
+        // must coordinate. Computed here (roles are settled — startRound already
+        // reconciled the just-promoted Defuser out of `role === 'expert'`) off the
+        // SAME seed chain as the bomb, keyed by `pairIndex` (retry-reproducible;
+        // no Math.random), but namespaced (`:expert-chapters`) so this rng stream
+        // is independent of the bomb-value rng for the same team. Wrapped so a
+        // failure here NEVER bubbles into the ROUND_START catch (which would cancel
+        // timers / leave a half-started round): on error the Experts simply fall
+        // back to full manual access (fail-safe). The map is server-side only —
+        // stamped on RoundState below and delivered targeted per-Expert after
+        // BOMB_INIT; it is NEVER placed on the SESSION_STATE broadcast.
+        let chapterAssignments: Record<string, string[]> | undefined;
+        if (result.state.config.modifiers.asymmetricExpertRoles) {
+          try {
+            const assignments: Record<string, string[]> = {};
+            for (const teamId of teamIds) {
+              const experts = Object.values(result.state.players)
+                .filter((p) => p.teamId === teamId && p.role === 'expert')
+                .map((p) => p.playerId);
+              // AC-3: solo/zero Experts → no restriction (full access).
+              if (experts.length < 2) continue;
+              const templateSeed = deriveTemplateSeed(sessionId, pairIndex);
+              const seed = deriveTeamSeed(templateSeed, `${teamId}:expert-chapters`);
+              const teamMap = allocateExpertChapters(experts, CHAPTER_IDS, makeSeededRng(seed));
+              for (const [playerId, chapterIds] of Object.entries(teamMap)) {
+                assignments[playerId] = chapterIds;
+              }
+            }
+            if (Object.keys(assignments).length > 0) chapterAssignments = assignments;
+          } catch (allocErr) {
+            deps.log.error(
+              { allocErr, sessionId, roundNumber: result.round.roundNumber },
+              'expert chapter allocation failed; Experts fall back to full manual',
+            );
+            chapterAssignments = undefined;
+          }
+        }
+
         // Story 4.7 (closes the 8.2 seam): generate + persist every team's bomb
         // FIRST — before the session/round persist and before ANY broadcast.
         // Generation runs in one synchronous pass inside initializeRoundBombs and
@@ -1473,7 +1535,13 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
         // no longer retryable — but generation, the one input-driven failure, has
         // already passed by this point.)
         await deps.redis.setJSON(sessionKey(sessionId), result.state);
-        await deps.redis.setJSON(roundKey(sessionId, result.round.roundNumber), result.round);
+        // Stamp the Story 9.1 chapter split onto the persisted round (same single
+        // write). `chapterAssignments` is undefined for an unrestricted round —
+        // JSON.stringify drops the key, so the round shape is unchanged there.
+        await deps.redis.setJSON(roundKey(sessionId, result.round.roundNumber), {
+          ...result.round,
+          chapterAssignments,
+        });
 
         // Route every roster socket into its team room (architecture
         // Pattern 1) so 8.4+ team-scoped broadcasts have a target.
@@ -1511,6 +1579,32 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
         // clock are both ready when the client renders the bomb.
         for (const teamId of teamIds) {
           io.to(teamRoom(sessionId, teamId)).emit('BOMB_INIT', bombs[teamId]);
+        }
+
+        // Story 9.1: deliver each restricted Expert their OWN chapter set —
+        // TARGETED per-socket (reusing the roster `sockets` fetched above), never
+        // on the SESSION_STATE broadcast, so no Expert learns another's slice.
+        // AFTER BOMB_INIT so the client's new-round reset (setBomb clears the
+        // prior restriction) has landed before this re-sets it. Wrapped so a
+        // delivery hiccup can't detonate an already-armed round (fail-safe: the
+        // Expert falls back to the full manual, and reconnect re-delivers).
+        if (chapterAssignments !== undefined) {
+          try {
+            for (const member of sockets) {
+              const chapterIds = chapterAssignments[member.data.playerId ?? ''];
+              if (chapterIds !== undefined) {
+                member.emit('EXPERT_CHAPTER_ASSIGNMENT', {
+                  roundNumber: result.round.roundNumber,
+                  chapterIds,
+                });
+              }
+            }
+          } catch (deliverErr) {
+            deps.log.error(
+              { deliverErr, sessionId, roundNumber: result.round.roundNumber },
+              'expert chapter delivery failed; some Experts keep full manual until reconnect',
+            );
+          }
         }
 
         deps.log.info(

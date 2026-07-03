@@ -18,6 +18,7 @@ export type {
   ErrorPayload,
   ManualPositionPayload,
   ExpertManualPositionPayload,
+  ExpertChapterAssignmentPayload,
   VoiceTokenRequestPayload,
   VoiceTokenGrantPayload,
   VoiceTokenErrorPayload,

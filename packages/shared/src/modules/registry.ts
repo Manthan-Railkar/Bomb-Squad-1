@@ -128,6 +128,17 @@ export const MODULE_IDS = [
 export type ModuleId = (typeof MODULE_IDS)[number];
 
 /**
+ * Canonical manual-chapter ids (Story 9.1). One chapter per real module type —
+ * chapter id === module id (every module's manual sets `chapterId` to its
+ * module-id constant). Deliberately identical to `MODULE_IDS`: the 11 real
+ * production modules, `'dev-demo'` excluded. Used by `allocateExpertChapters`
+ * (round-robin Expert allocation) and by the client to drop the sandbox-only
+ * `dev-demo` chapter from a restricted round. A registry edit that adds a 12th
+ * id or leaks `dev-demo` is caught by the `CHAPTER_IDS` unit test.
+ */
+export const CHAPTER_IDS = MODULE_IDS;
+
+/**
  * Default module pool per difficulty tier — each tier is a superset of the
  * easier one (harder rounds can still draw easy modules). Generation resolves
  * `config.modulePool ?? TIER_POOLS[config.difficulty]`.

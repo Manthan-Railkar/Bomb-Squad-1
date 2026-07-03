@@ -5,3 +5,4 @@ export * from './modules/index.js';
 export * from './generation/index.js';
 export * from './session/index.js';
 export * from './voice/index.js';
+export * from './roles/index.js';

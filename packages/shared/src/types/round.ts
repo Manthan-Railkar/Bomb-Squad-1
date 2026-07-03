@@ -37,6 +37,15 @@ export type RoundOutcome = 'defused' | 'exploded' | 'time-expired';
  *   (Story 8.8). `resolveRound` reads it to record the BETTER of the two times
  *   in place (replace `roundTimesMs[roundNumber-1]`) instead of appending a
  *   second entry for the same round.
+ * - `chapterAssignments` records the per-Expert manual-chapter allocation for a
+ *   round restricted by the `asymmetricExpertRoles` modifier (Story 9.1): a map
+ *   of playerId → assigned chapter ids, present ONLY for restricted Experts and
+ *   absent/`undefined` when the round does not restrict (modifier off, or the
+ *   active team has <2 Experts). SERVER-SIDE ONLY — it is NEVER part of any
+ *   client broadcast (the reconnect re-send reads it and emits each Expert only
+ *   their own slice; the initial delivery is a targeted per-socket emit). Roles
+ *   themselves live on `SessionState.players`; the per-round chapter split
+ *   belongs here.
  */
 export interface RoundState {
   roundNumber: number;
@@ -44,4 +53,5 @@ export interface RoundState {
   defusers: Partial<Record<TeamId, string>>;
   outcomes: Partial<Record<TeamId, RoundOutcome>>;
   retry: boolean;
+  chapterAssignments?: Record<string, string[]>;
 }

@@ -13,6 +13,14 @@ import type {
   TeamState,
 } from '@bomb-squad/shared';
 import {
+  CHAPTER_IDS,
+  allocateExpertChapters,
+  deriveTemplateSeed,
+  deriveTeamSeed,
+  makeSeededRng,
+} from '@bomb-squad/shared';
+import { pairIndexFor } from '../../session/relayComplete.js';
+import {
   registerSessionHandlers,
   parseSessionCreatePayload,
   parseSessionJoinPayload,
@@ -3417,5 +3425,241 @@ describe('SESSION_END handler (Story 8.10)', () => {
     await new Promise((r) => setTimeout(r, 30));
     expect(archive.archived).toHaveLength(1);
     expect((JSON.parse(store.data.get(sessionKey(sessionId))!) as SessionState).status).toBe('ended');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Story 9.1 — Asymmetric Expert Roles: ROUND_START chapter allocation + delivery.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('ROUND_START — Asymmetric Expert Roles (Story 9.1)', () => {
+  let server: TestSocketServer;
+  let store: MemoryRedisStore;
+  let facilitator: TestClientSocket;
+
+  beforeEach(async () => {
+    store = createMemoryRedisStore();
+    server = await startTestSocketServer((io) =>
+      registerSessionHandlers(io, {
+        redis: store,
+        log: noopLog,
+        timer: createTestScheduler({ redis: store, io, log: noopLog }),
+        archive: fakeArchive,
+      }),
+    );
+    facilitator = await server.connectClient();
+  });
+
+  afterEach(async () => {
+    await server.close();
+  });
+
+  function onceEvent<T>(socket: TestClientSocket, event: string): Promise<T> {
+    return new Promise<T>((resolve) => {
+      socket.once(event as 'SESSION_STATE', ((p: T) => resolve(p)) as never);
+    });
+  }
+  const raceTimeout = (p: Promise<unknown>, ms: number): Promise<'received' | 'timeout'> =>
+    Promise.race([
+      p.then(() => 'received' as const),
+      new Promise<'timeout'>((r) => setTimeout(() => r('timeout'), ms)),
+    ]);
+
+  async function joinExpert(
+    joinCode: string,
+    displayName: string,
+  ): Promise<{ socket: TestClientSocket; identity: SessionIdentityPayload }> {
+    const socket = await server.connectClient();
+    const state = onceEvent<SessionState>(socket, 'SESSION_STATE');
+    const identityP = onceEvent<SessionIdentityPayload>(socket, 'SESSION_IDENTITY');
+    socket.emit('SESSION_JOIN', { joinCode, displayName, role: 'expert' });
+    const [, identity] = await Promise.all([state, identityP]);
+    return { socket, identity };
+  }
+
+  function idOf(state: SessionState, displayName: string): string {
+    return Object.values(state.players).find((p) => p.displayName === displayName)!.playerId;
+  }
+
+  /**
+   * Build a prepared round on Team A (active). Team A relayOrder = [dfsr, ...experts]
+   * so startRound promotes `dfsr` to Defuser and the rest stay Experts. `modifier`
+   * toggles asymmetricExpertRoles; `expertCount` is the number of Experts left on A
+   * after the Defuser is promoted (2 → restricted, 1 → solo). Returns the sockets
+   * keyed by role plus the ids and sessionId.
+   */
+  async function prepared(opts: { modifier: boolean; expertCount: number }): Promise<{
+    sessionId: string;
+    dfsr: TestClientSocket;
+    experts: TestClientSocket[];
+    expertIdentities: SessionIdentityPayload[];
+    teamB: TestClientSocket;
+    ids: { dfsr: string; experts: string[]; teamB: string };
+  }> {
+    const ack = await createSession(facilitator);
+    const { socket: dfsr } = await joinExpert(ack.joinCode, 'Dana');
+    const experts: TestClientSocket[] = [];
+    const expertIdentities: SessionIdentityPayload[] = [];
+    for (let i = 0; i < opts.expertCount; i++) {
+      const { socket, identity } = await joinExpert(ack.joinCode, `Ex${i}`);
+      experts.push(socket);
+      expertIdentities.push(identity);
+    }
+    const { socket: teamB } = await joinExpert(ack.joinCode, 'Bella');
+
+    const stored = JSON.parse(store.data.get(sessionKey(ack.sessionId))!) as SessionState;
+    const dfsrId = idOf(stored, 'Dana');
+    const expertIds = experts.map((_, i) => idOf(stored, `Ex${i}`));
+    const teamBId = idOf(stored, 'Bella');
+
+    // Assign teams directly (deterministic relayOrder): A = [Dana, Ex0, Ex1, …],
+    // B = [Bella]. Pad B to the min team size. Flip the modifier as requested.
+    const players = { ...stored.players };
+    for (const pid of [dfsrId, ...expertIds]) players[pid] = { ...players[pid]!, teamId: 'A', role: 'expert' };
+    players[teamBId] = { ...players[teamBId]!, teamId: 'B', role: 'expert' };
+    players['pad-B'] = { playerId: 'pad-B', displayName: 'Pad-B', role: 'expert', teamId: 'B', isReady: true };
+    const baseTeam = (teamId: TeamId, relayOrder: string[]): TeamState => ({
+      teamId,
+      relayOrder,
+      currentDefuserIndex: 0,
+      cumulativeTimeMs: 0,
+      roundTimesMs: [],
+      roundOutcomes: [],
+      equalisationRoundsPlayed: 0,
+    });
+    await store.setJSON(sessionKey(ack.sessionId), {
+      ...stored,
+      config: {
+        ...stored.config,
+        modifiers: { ...stored.config.modifiers, asymmetricExpertRoles: opts.modifier },
+      },
+      teams: {
+        A: baseTeam('A', [dfsrId, ...expertIds]),
+        B: baseTeam('B', [teamBId, 'pad-B']),
+      },
+      players,
+    });
+
+    // Open preparation (selects activeTeamId = A for round 1).
+    const prepDone = onceEvent<SessionState>(facilitator, 'SESSION_STATE');
+    facilitator.emit('PREPARATION_OPEN');
+    const prep = await prepDone;
+    expect(prep.status).toBe('preparation');
+    expect(prep.activeTeamId).toBe('A');
+
+    return {
+      sessionId: ack.sessionId,
+      dfsr,
+      experts,
+      expertIdentities,
+      teamB,
+      ids: { dfsr: dfsrId, experts: expertIds, teamB: teamBId },
+    };
+  }
+
+  it('modifier ON + 2 Experts → each Expert gets a disjoint chapter set (union = 11); Defuser & other team get none', async () => {
+    const { sessionId, dfsr, experts, teamB, ids } = await prepared({ modifier: true, expertCount: 2 });
+
+    const e0 = onceEvent<{ roundNumber: number; chapterIds: string[] }>(experts[0]!, 'EXPERT_CHAPTER_ASSIGNMENT');
+    const e1 = onceEvent<{ roundNumber: number; chapterIds: string[] }>(experts[1]!, 'EXPERT_CHAPTER_ASSIGNMENT');
+    const dfsrSpy = jest.fn();
+    dfsr.on('EXPERT_CHAPTER_ASSIGNMENT', dfsrSpy);
+    const teamBSpy = jest.fn();
+    teamB.on('EXPERT_CHAPTER_ASSIGNMENT', teamBSpy);
+
+    facilitator.emit('ROUND_START');
+    const [a0, a1] = await Promise.all([e0, e1]);
+
+    expect(a0.roundNumber).toBe(1);
+    expect(a1.roundNumber).toBe(1);
+    // Disjoint + full cover.
+    expect(a0.chapterIds.filter((c) => a1.chapterIds.includes(c))).toEqual([]);
+    expect([...a0.chapterIds, ...a1.chapterIds].sort()).toEqual([...CHAPTER_IDS].sort());
+    expect([a0.chapterIds.length, a1.chapterIds.length].sort()).toEqual([5, 6]);
+
+    // The Defuser and the resting team never receive an assignment.
+    await new Promise((r) => setTimeout(r, 60));
+    expect(dfsrSpy).not.toHaveBeenCalled();
+    expect(teamBSpy).not.toHaveBeenCalled();
+
+    // Persisted RoundState carries the map for EXACTLY the 2 active-team Experts.
+    const round = JSON.parse(store.data.get(roundKey(sessionId, 1))!) as RoundState;
+    expect(Object.keys(round.chapterAssignments ?? {}).sort()).toEqual([...ids.experts].sort());
+  });
+
+  it('the broadcast SESSION_STATE never carries the chapter-assignment map (AC-2)', async () => {
+    const { experts } = await prepared({ modifier: true, expertCount: 2 });
+    const stateP = onceEvent<SessionState>(facilitator, 'SESSION_STATE');
+    // Drain the assignment so the round completes cleanly.
+    void onceEvent(experts[0]!, 'EXPERT_CHAPTER_ASSIGNMENT');
+    facilitator.emit('ROUND_START');
+    const state = await stateP;
+    expect(JSON.stringify(state)).not.toContain('chapterAssignments');
+    expect('chapterAssignments' in (state as unknown as Record<string, unknown>)).toBe(false);
+  });
+
+  it('modifier ON + solo Expert → NO event, no chapterAssignments (AC-3)', async () => {
+    const { sessionId, experts } = await prepared({ modifier: true, expertCount: 1 });
+    const evt = onceEvent(experts[0]!, 'EXPERT_CHAPTER_ASSIGNMENT');
+    facilitator.emit('ROUND_START');
+    // BOMB_INIT lands; assignment must NOT.
+    await onceEvent(experts[0]!, 'BOMB_INIT');
+    expect(await raceTimeout(evt, 80)).toBe('timeout');
+    const round = JSON.parse(store.data.get(roundKey(sessionId, 1))!) as RoundState;
+    expect(round.chapterAssignments).toBeUndefined();
+  });
+
+  it('modifier OFF + 2 Experts → NO event, no chapterAssignments (AC-3)', async () => {
+    const { sessionId, experts } = await prepared({ modifier: false, expertCount: 2 });
+    const evt = onceEvent(experts[0]!, 'EXPERT_CHAPTER_ASSIGNMENT');
+    facilitator.emit('ROUND_START');
+    await onceEvent(experts[0]!, 'BOMB_INIT');
+    expect(await raceTimeout(evt, 80)).toBe('timeout');
+    const round = JSON.parse(store.data.get(roundKey(sessionId, 1))!) as RoundState;
+    expect(round.chapterAssignments).toBeUndefined();
+  });
+
+  it('allocation is seed-derived → retry-reproducible (AC-1): persisted map matches the seed chain', async () => {
+    const { sessionId, experts } = await prepared({ modifier: true, expertCount: 2 });
+    void onceEvent(experts[0]!, 'EXPERT_CHAPTER_ASSIGNMENT');
+    void onceEvent(experts[1]!, 'EXPERT_CHAPTER_ASSIGNMENT');
+    facilitator.emit('ROUND_START');
+    await onceEvent(experts[0]!, 'BOMB_INIT');
+    await new Promise((r) => setTimeout(r, 40));
+
+    const active = JSON.parse(store.data.get(sessionKey(sessionId))!) as SessionState;
+    const round = JSON.parse(store.data.get(roundKey(sessionId, 1))!) as RoundState;
+    // Reconstruct from the SAME seed chain the handler uses. A retry reuses
+    // sessionId + roundNumber → identical pairIndex → identical allocation.
+    const activeExperts = Object.values(active.players)
+      .filter((p) => p.teamId === 'A' && p.role === 'expert')
+      .map((p) => p.playerId);
+    const pairIndex = pairIndexFor(round.roundNumber);
+    const templateSeed = deriveTemplateSeed(sessionId, pairIndex);
+    const seed = deriveTeamSeed(templateSeed, 'A:expert-chapters');
+    const expected = allocateExpertChapters(activeExperts, CHAPTER_IDS, makeSeededRng(seed));
+    expect(round.chapterAssignments).toEqual(expected);
+  });
+
+  it('a reconnecting restricted Expert re-receives EXPERT_CHAPTER_ASSIGNMENT after BOMB_INIT (AC-4)', async () => {
+    const { experts, expertIdentities } = await prepared({ modifier: true, expertCount: 2 });
+    const first = onceEvent<{ chapterIds: string[] }>(experts[0]!, 'EXPERT_CHAPTER_ASSIGNMENT');
+    void onceEvent(experts[1]!, 'EXPERT_CHAPTER_ASSIGNMENT');
+    facilitator.emit('ROUND_START');
+    const original = await first;
+
+    // The Expert refreshes mid-round: disconnect, then reattach with its durable
+    // token. The reconnect restore re-sends BOMB_INIT and then re-restricts the
+    // manual with the SAME assignment read from the persisted RoundState.
+    const identity = expertIdentities[0]!;
+    experts[0]!.disconnect();
+    const { socket: rejoined, events } = await server.connectClientCapturing(
+      { sessionId: identity.sessionId, reattachToken: identity.reattachToken },
+      ['BOMB_INIT', 'EXPERT_CHAPTER_ASSIGNMENT'],
+    );
+    await events['BOMB_INIT'];
+    const replay = (await events['EXPERT_CHAPTER_ASSIGNMENT']) as { roundNumber: number; chapterIds: string[] };
+    expect(replay.roundNumber).toBe(1);
+    expect(replay.chapterIds).toEqual(original.chapterIds);
+    rejoined.disconnect();
   });
 });

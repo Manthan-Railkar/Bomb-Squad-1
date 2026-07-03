@@ -7,6 +7,7 @@ import type {
   ErrorPayload,
   SessionIdentityPayload,
   SessionRemovedPayload,
+  ExpertChapterAssignmentPayload,
 } from '@bomb-squad/shared';
 import type { TimerState } from '@bomb-squad/shared';
 import type { AppClientSocket } from './socket.js';
@@ -20,7 +21,7 @@ import { useGameStore } from '../store/gameStore.js';
  * here — never listeners owned by other modules or socket.io internals.
  */
 export function bindServerEvents(socket: AppClientSocket): () => void {
-  const { setSession, setBomb, applyModuleUpdate, setTimer, setStrike, setResolution, setScoreboard, setConnection, clearSession, setMyPlayerId } =
+  const { setSession, setBomb, applyModuleUpdate, setTimer, setStrike, setResolution, setScoreboard, setConnection, clearSession, setMyPlayerId, setAssignedChapters } =
     useGameStore.getState();
 
   const onBombDefused = (payload: RoundEndPayload) => {
@@ -72,6 +73,13 @@ export function bindServerEvents(socket: AppClientSocket): () => void {
   const onError = (payload: ErrorPayload) => {
     console.error('[socket] ERROR', payload);
   };
+  // Story 9.1: this Expert's restricted manual-chapter set for the round. Arrives
+  // right after BOMB_INIT when the round restricts (asymmetricExpertRoles + ≥2
+  // Experts); an unrestricted round never sends it, so the store stays null (full
+  // manual). Also re-sent on reconnect.
+  const onExpertChapterAssignment = (payload: ExpertChapterAssignmentPayload) => {
+    setAssignedChapters(payload.chapterIds);
+  };
   // Durable identity (Story 2.7): persist the private packet so a refresh can
   // re-attach via the handshake auth. AR15: the token is a secret — never log it.
   const onIdentity = (payload: SessionIdentityPayload) => {
@@ -117,6 +125,7 @@ export function bindServerEvents(socket: AppClientSocket): () => void {
   socket.on('PAUSED', onPaused);
   socket.on('RESUMED', onResumed);
   socket.on('ERROR', onError);
+  socket.on('EXPERT_CHAPTER_ASSIGNMENT', onExpertChapterAssignment);
 
   socket.on('connect', onConnect);
   socket.on('disconnect', onDisconnect);
@@ -138,6 +147,7 @@ export function bindServerEvents(socket: AppClientSocket): () => void {
     socket.off('PAUSED', onPaused);
     socket.off('RESUMED', onResumed);
     socket.off('ERROR', onError);
+    socket.off('EXPERT_CHAPTER_ASSIGNMENT', onExpertChapterAssignment);
     socket.off('connect', onConnect);
     socket.off('disconnect', onDisconnect);
     socket.off('connect_error', onConnectError);

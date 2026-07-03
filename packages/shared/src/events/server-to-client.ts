@@ -7,6 +7,7 @@ import type {
   PauseResumePayload,
   ErrorPayload,
   ExpertManualPositionPayload,
+  ExpertChapterAssignmentPayload,
   SessionIdentityPayload,
   SessionRemovedPayload,
 } from './payloads.js';
@@ -44,6 +45,10 @@ export interface ServerToClientEvents {
   SCOREBOARD: (payload: ScoreboardPayload) => void;
   LIFELINE_TOAST: (payload: LifelineToastPayload) => void;
   EXPERT_MANUAL_POSITION: (payload: ExpertManualPositionPayload) => void;
+  /** Story 9.1: an Expert's OWN chapter assignment for a restricted round.
+   * Targeted per-Expert (never broadcast) — server-driven only, no client→server
+   * counterpart. */
+  EXPERT_CHAPTER_ASSIGNMENT: (payload: ExpertChapterAssignmentPayload) => void;
   PAUSED: (payload: PauseResumePayload) => void;
   RESUMED: (payload: PauseResumePayload) => void;
   ERROR: (payload: ErrorPayload) => void;

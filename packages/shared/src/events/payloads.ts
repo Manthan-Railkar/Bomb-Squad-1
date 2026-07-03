@@ -186,6 +186,20 @@ export interface ExpertManualPositionPayload {
   playerId: string;
 }
 
+/**
+ * An Expert's OWN manual-chapter assignment for a restricted round (Story 9.1,
+ * FR37). Delivered targeted to that Expert's socket only — NEVER on the
+ * session-wide SESSION_STATE broadcast, so no Expert learns another Expert's
+ * assignment. Carries only the recipient's own set (no other Expert's data, no
+ * full map). Sent after BOMB_INIT at ROUND_START and re-sent on reconnect.
+ */
+export interface ExpertChapterAssignmentPayload {
+  /** The round this assignment is for (matches SessionState.roundNumber). */
+  roundNumber: number;
+  /** The chapter/module ids this Expert may navigate. The rest render locked. */
+  chapterIds: string[];
+}
+
 // ─── Voice (Story 3.1 — Role-Scoped LiveKit Token Minting) ───────────────────
 
 /**

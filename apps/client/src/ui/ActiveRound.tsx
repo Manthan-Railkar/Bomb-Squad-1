@@ -1,4 +1,5 @@
 import { useMemo, type ReactNode } from 'react';
+import { CHAPTER_IDS } from '@bomb-squad/shared';
 import { useGameStore } from '../store/gameStore.js';
 import BombStage from '../scenes/BombStage.js';
 import BombScene from '../scenes/BombScene.js';
@@ -34,10 +35,20 @@ import { ROUND_IN_PROGRESS, WATCHING_THE_BOMB_ROOM, RESTING_SPECTATE } from './c
 export default function ActiveRound() {
   const session = useGameStore((s) => s.session);
   const selfId = useGameStore((s) => s.myPlayerId);
+  // Story 9.1: this Expert's restricted chapter set (null = full access). Read
+  // reactively so the manual re-restricts the moment the assignment lands.
+  const assignedChapterIds = useGameStore((s) => s.assignedChapterIds);
 
   const chapters = useMemo(
     () => buildChapters(SANDBOX_MODULES.flatMap((m) => m.getManualPages())),
     [],
+  );
+  // When restricted, drop the sandbox-only `dev-demo` chapter so it never shows
+  // as a stray locked row, and number the manual as the canonical 11-module
+  // order. When unrestricted, the full list (incl. dev-demo) is unchanged.
+  const realChapters = useMemo(
+    () => chapters.filter((c) => (CHAPTER_IDS as readonly string[]).includes(c.chapterId)),
+    [chapters],
   );
 
   if (session === null) return null;
@@ -71,7 +82,12 @@ export default function ActiveRound() {
       </BombStage>
     );
   } else if (role === 'expert') {
-    surface = <ManualViewer chapters={chapters} />;
+    surface =
+      assignedChapterIds !== null ? (
+        <ManualViewer chapters={realChapters} assignedChapterIds={assignedChapterIds} />
+      ) : (
+        <ManualViewer chapters={chapters} />
+      );
   } else {
     surface = (
       <div className="flex flex-1 items-center justify-center p-8">
