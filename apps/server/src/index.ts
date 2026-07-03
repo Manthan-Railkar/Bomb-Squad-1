@@ -9,6 +9,7 @@ import { connectRedis } from './state/index.js';
 import { connectPostgres } from './persistence/index.js';
 import { registerSessionHandlers, type SessionSocketData } from './handlers/sessionHandlers.js';
 import { registerManualHandlers } from './handlers/manualHandlers.js';
+import { registerLifelineHandlers } from './handlers/lifelineHandlers.js';
 import { registerVoiceHandlers } from './handlers/voiceHandlers.js';
 import { registerModuleHandlers } from './handlers/moduleHandlers.js';
 import { LoungeBridge } from './voice/loungeBridge.js';
@@ -156,6 +157,7 @@ async function start(): Promise<void> {
     loungeBridge,
   });
   registerManualHandlers(io, { redis: redisStore, log: fastify.log });
+  registerLifelineHandlers(io, { redis: redisStore, log: fastify.log });
   registerModuleHandlers(io, {
     redis: redisStore,
     log: fastify.log,

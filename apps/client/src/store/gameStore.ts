@@ -20,6 +20,21 @@ export interface ResolutionState {
   elapsedMs: number;
 }
 
+/**
+ * A Bomb-Room lifeline toast (Story 9.3). Client-only PRESENTATION state — the
+ * wire delivers only `{ promptId, fromName }` (LifelineToastPayload); the display
+ * text is resolved from the shared prompt list at render, never carried here.
+ * `id` is a store-assigned monotonic key (NOT Math.random/Date.now — determinism).
+ */
+export interface LifelineToast {
+  id: string;
+  promptId: string;
+  fromName: string;
+}
+
+/** Max lifeline toasts kept/rendered at once (EXPERIENCE.md: top-right, max 3). */
+export const MAX_LIFELINE_TOASTS = 3;
+
 interface GameState {
   session: SessionState | null;
   bomb: BombState | null;
@@ -60,6 +75,15 @@ interface GameState {
    * is a render gate, independent of this stored value).
    */
   lifelineTokens: number;
+  /**
+   * Append-only queue of Bomb-Room lifeline toasts (Story 9.3), each auto-dismissed
+   * by its render component after 8s. Capped at MAX_LIFELINE_TOASTS (drop-oldest).
+   * Cleared on clearSession. Transient presentation — NOT persisted, NOT replayed
+   * on reconnect (a missed 8s toast is simply missed, like a missed STRIKE flash).
+   */
+  lifelineToasts: LifelineToast[];
+  /** Monotonic counter backing deterministic toast ids (never Math.random/Date.now). */
+  lifelineToastSeq: number;
   setSession: (session: SessionState) => void;
   /** Record this client's durable playerId (from SESSION_IDENTITY or a stored seed). */
   setMyPlayerId: (playerId: string | null) => void;
@@ -84,6 +108,10 @@ interface GameState {
   setAssignedChapters: (chapterIds: string[] | null) => void;
   /** Set this spectator's lifeline-token balance from the LIFELINE_TOKENS event (Story 9.2). */
   setLifelineTokens: (count: number) => void;
+  /** Enqueue a Bomb-Room lifeline toast (Story 9.3); assigns a deterministic id. */
+  pushLifelineToast: (toast: { promptId: string; fromName: string }) => void;
+  /** Remove one lifeline toast by id (its component's 8s auto-dismiss, or overflow). */
+  dismissLifelineToast: (id: string) => void;
   setConnection: (connection: 'disconnected' | 'connecting' | 'connected') => void;
 }
 
@@ -108,6 +136,8 @@ export const useGameStore = create<GameState>((set) => ({
   removalNotice: null,
   assignedChapterIds: null,
   lifelineTokens: 0,
+  lifelineToasts: [],
+  lifelineToastSeq: 0,
 
   setSession: (session) => set({ session }),
   setMyPlayerId: (myPlayerId) => set({ myPlayerId }),
@@ -122,6 +152,8 @@ export const useGameStore = create<GameState>((set) => ({
       removalNotice: notice ?? null,
       assignedChapterIds: null,
       lifelineTokens: 0,
+      lifelineToasts: [],
+      lifelineToastSeq: 0,
     }),
   clearRemovalNotice: () => set({ removalNotice: null }),
   // A fresh bomb (BOMB_INIT) means a new round — clear any prior resolution AND
@@ -168,6 +200,24 @@ export const useGameStore = create<GameState>((set) => ({
   // Standing balance — set only from the server's LIFELINE_TOKENS event. Deliberately
   // NOT touched by setBomb (tokens persist across rounds); cleared only by clearSession.
   setLifelineTokens: (lifelineTokens) => set({ lifelineTokens }),
+
+  // Enqueue a toast with a DETERMINISTIC id from the monotonic seq (never
+  // Math.random/Date.now — project rule). Capped at MAX_LIFELINE_TOASTS: on
+  // overflow the oldest is dropped (max-3-visible, EXPERIENCE.md) and logged — a
+  // silent drop would read as "delivered" when it wasn't.
+  pushLifelineToast: ({ promptId, fromName }) =>
+    set((s) => {
+      const seq = s.lifelineToastSeq + 1;
+      const next = [...s.lifelineToasts, { id: `lt-${seq}`, promptId, fromName }];
+      if (next.length > MAX_LIFELINE_TOASTS) {
+        const dropped = next.shift();
+        console.info('[gameStore] lifeline toast overflow — dropped oldest', { droppedId: dropped?.id });
+      }
+      return { lifelineToasts: next, lifelineToastSeq: seq };
+    }),
+
+  dismissLifelineToast: (id) =>
+    set((s) => ({ lifelineToasts: s.lifelineToasts.filter((t) => t.id !== id) })),
 
   setConnection: (connection) => set({ connection }),
 }));

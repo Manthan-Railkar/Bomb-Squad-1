@@ -7,6 +7,8 @@ import ManualViewer from '../manual/ManualViewer.js';
 import { buildChapters } from '../manual/chapters.js';
 import { SANDBOX_MODULES } from '../modules/index.js';
 import ResolutionBanner from './ResolutionBanner.js';
+import LifelinePanel from './LifelinePanel.js';
+import LifelineToastHost from './LifelineToast.js';
 import VoiceController from './VoiceController.js';
 import PauseOverlay from './PauseOverlay.js';
 import SpeakerIndicator from './SpeakerIndicator.js';
@@ -93,6 +95,9 @@ export default function ActiveRound() {
           {RESTING_SPECTATE}
         </p>
         {lifelineCounter}
+        {/* Story 9.3: send affordance for watching players — self-hides unless the
+            modifier is on AND this viewer holds a token. */}
+        <LifelinePanel />
       </div>
     );
   } else if (role === 'defuser' && myTeamId !== undefined) {
@@ -121,6 +126,8 @@ export default function ActiveRound() {
         {/* Counter only for a genuine spectator (the Facilitator/ROUND_IN_PROGRESS
             fallback never earns tokens). */}
         {role === 'spectator' ? lifelineCounter : null}
+        {/* Story 9.3: send affordance — self-hides for the facilitator (0 tokens). */}
+        {role === 'spectator' ? <LifelinePanel /> : null}
       </div>
     );
   }
@@ -131,6 +138,11 @@ export default function ActiveRound() {
     <div className="relative flex flex-1 flex-col">
       {surface}
       <ResolutionBanner />
+      {/* Bomb-Room lifeline toast overlay (Story 9.3): a top-right stacked, 8s,
+          non-dismissable host on its own compositor layer. Sibling above the
+          surface — reaches the active-team Defuser's bomb AND Expert's manual
+          (both share the team room), never a child of the sized canvas box. */}
+      <LifelineToastHost />
       {/* Pause surface (Story 8.7): the facilitator's break-glass Pause control, and
           the "Holding the clock" / amber disconnect strip + scene dim when paused. */}
       <PauseOverlay />

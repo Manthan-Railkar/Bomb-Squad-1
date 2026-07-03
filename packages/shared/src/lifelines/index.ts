@@ -9,3 +9,7 @@
 
 /** Maximum lifeline tokens a single spectator may hold at once (Story 9.2, FR42). */
 export const MAX_LIFELINE_TOKENS = 3;
+
+// Story 9.3: the fixed pre-defined hint prompt list (shared source of truth for
+// both the server's fail-closed validation and the client's picker/toast text).
+export * from './prompts.js';

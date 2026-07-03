@@ -213,6 +213,19 @@ export const MODIFIER_LIFELINES_SUB = 'Let spectators spend tokens to send hints
 // Spectator Lifelines modifier is on. {n} is interpolated at render. The send
 // affordance (button + hint list) is Story 9.3 — this is the balance only.
 export const LIFELINE_TOKENS_LABEL = (n: number): string => `Lifeline tokens: ${n}`;
+// Story 9.3: the spectator's send affordance (LifelinePanel) + Bomb-Room toast.
+// The per-prompt labels come from the shared LIFELINE_PROMPTS list (id → text) —
+// never duplicated here, so the wire and the picker read the SAME source.
+export const LIFELINE_SEND_CTA = 'Send a lifeline';
+export const LIFELINE_PICK_PROMPT = 'Pick a tip to send';
+export const LIFELINE_PANEL_CANCEL = 'Cancel';
+export const LIFELINE_SEND_CONFIRM = 'Send tip';
+/** Confirm-step line; `nAfter` = the sender's balance AFTER this send (current − 1). */
+export const LIFELINE_CONFIRM_LINE = (nAfter: number): string =>
+  `Send this tip? You have ${nAfter} tokens after.`;
+/** Bomb-Room toast copy. Text is resolved from the shared prompt list, never the wire. */
+export const LIFELINE_TOAST_TEXT = (fromName: string, tip: string): string =>
+  `Spectator ${fromName} sent a tip: ${tip}`;
 export const MODULE_POOL_LABEL = 'Module pool';
 export const MODULE_POOL_SUB = 'Tap to include or exclude. Greyed modules arrive in a later release.';
 export const MODULE_POOL_COMING_SOON = 'coming soon';

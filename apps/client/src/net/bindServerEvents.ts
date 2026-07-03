@@ -22,7 +22,7 @@ import { useGameStore } from '../store/gameStore.js';
  * here — never listeners owned by other modules or socket.io internals.
  */
 export function bindServerEvents(socket: AppClientSocket): () => void {
-  const { setSession, setBomb, applyModuleUpdate, setTimer, setStrike, setResolution, setScoreboard, setConnection, clearSession, setMyPlayerId, setAssignedChapters, setLifelineTokens } =
+  const { setSession, setBomb, applyModuleUpdate, setTimer, setStrike, setResolution, setScoreboard, setConnection, clearSession, setMyPlayerId, setAssignedChapters, setLifelineTokens, pushLifelineToast } =
     useGameStore.getState();
 
   const onBombDefused = (payload: RoundEndPayload) => {
@@ -48,8 +48,11 @@ export function bindServerEvents(socket: AppClientSocket): () => void {
   const onScoreboard = (payload: ScoreboardPayload) => {
     setScoreboard(payload);
   };
+  // Story 9.3: a Bomb-Room lifeline toast (Defuser + Experts of the active team).
+  // Enqueue it for the 8s non-dismissable overlay; the wire carries only
+  // promptId + fromName (LifelineToast resolves the text from the shared list).
   const onLifelineToast = (payload: LifelineToastPayload) => {
-    console.info('[socket] LIFELINE_TOAST', payload);
+    pushLifelineToast({ promptId: payload.promptId, fromName: payload.fromName });
   };
   // Story 9.2: this spectator's OWN token count (grant at round completion,
   // re-sent on reconnect). Server-authoritative — the client only mirrors it.

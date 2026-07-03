@@ -58,5 +58,37 @@ export async function grantToken(
   return result;
 }
 
-// Story 9.3 will add `spendToken` here — same `updateJSON` CAS pattern,
-// decrement, reject-at-0. Do NOT implement spend in this story.
+/**
+ * Spend one token for a player (Story 9.3). Race-safe via `updateJSON` CAS on the
+ * SAME shared map key a concurrent 9.2 grant may touch.
+ *
+ * Fail-closed + never-negative: loads the map (null ⇒ `{}`), reads
+ * `current = map[playerId] ?? 0`. If `current < 1` it commits NOTHING (AC-3: a
+ * 0-token spend leaves the map byte-for-byte unchanged — no negative balance, no
+ * phantom key) and returns `{ ok: false, count: current }`. Otherwise it commits
+ * `{ ...map, [playerId]: current - 1 }` and returns `{ ok: true, count: current - 1 }`.
+ *
+ * The guard runs inside the pure `mutate`, so on a CAS retry it is always
+ * re-evaluated against the freshly committed state — a token granted (or spent)
+ * concurrently can never drive this below 0 or lose the other side's write.
+ */
+export async function spendToken(
+  redis: RedisStore,
+  sessionId: string,
+  playerId: string,
+): Promise<{ ok: boolean; count: number }> {
+  const { result } = await redis.updateJSON<LifelineMap, { ok: boolean; count: number }>(
+    lifelinesKey(sessionId),
+    (current) => {
+      const map = current ?? {};
+      const held = map[playerId] ?? 0;
+      if (held < 1) {
+        // AC-3: no deduction, no state change, never negative — commit nothing.
+        return { commit: false, result: { ok: false, count: held } };
+      }
+      const next = held - 1;
+      return { commit: true, value: { ...map, [playerId]: next }, result: { ok: true, count: next } };
+    },
+  );
+  return result;
+}
