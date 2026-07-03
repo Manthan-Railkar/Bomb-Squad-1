@@ -7,6 +7,7 @@ import { getSocket } from '../net/socket.js';
 import Button from './Button.js';
 import ConfirmButton from './ConfirmButton.js';
 import LobbyMicCheck from './LobbyMicCheck.js';
+import { isVoiceEnabled } from '../voice/voiceEnabled.js';
 import RoundConfigPanel from './RoundConfigPanel.js';
 import { buildShareLink } from './shareLink.js';
 import {
@@ -378,7 +379,7 @@ export default function Lobby() {
             Hidden while the viewer is alone (`roster.length <= 1`): a solo player
             has no one to check against and would see no dot, so the affordance
             only appears once a second player arrives (review decision 2026-06-15). */}
-        {roster.length > 1 && <LobbyMicCheck />}
+        {isVoiceEnabled() && roster.length > 1 && <LobbyMicCheck />}
 
         {isFacilitator && (
           // Two-step confirm: opening prep moves every player off the lobby —

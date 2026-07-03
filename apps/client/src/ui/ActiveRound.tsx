@@ -7,6 +7,7 @@ import { buildChapters } from '../manual/chapters.js';
 import { SANDBOX_MODULES } from '../modules/index.js';
 import ResolutionBanner from './ResolutionBanner.js';
 import VoiceController from './VoiceController.js';
+import { isVoiceEnabled } from '../voice/voiceEnabled.js';
 import PauseOverlay from './PauseOverlay.js';
 import SpeakerIndicator from './SpeakerIndicator.js';
 import MuteControl from './MuteControl.js';
@@ -99,7 +100,7 @@ export default function ActiveRound() {
       <SpeakerIndicator />
       <MuteControl />
       <AudioUnblockPrompt />
-      <VoiceController />
+      {isVoiceEnabled() && <VoiceController />}
     </div>
   );
 }
