@@ -35,6 +35,26 @@ describe('allocateExpertChapters', () => {
     expect(a).toEqual(b);
   });
 
+  it('shuffles the CHAPTERS too — the partition varies by seed, not a fixed interleave (review 9.1)', () => {
+    // If only the Expert ORDER were shuffled, 2 Experts would always split into
+    // the same two canonical half-sets (the seed merely deciding who gets which
+    // half), letting each Expert deduce the other's chapters forever. Chapter
+    // shuffling makes the SPLIT itself seed-random: across a handful of seeds
+    // the partition (as a set of sets, owners ignored) must not be constant.
+    const partitions = new Set<string>();
+    for (let seed = 1; seed <= 8; seed++) {
+      const map = allocateExpertChapters(['e1', 'e2'], CHAPTERS, makeSeededRng(seed));
+      partitions.add(
+        JSON.stringify(
+          Object.values(map)
+            .map((l) => [...l].sort())
+            .sort((a, b) => (a[0]! < b[0]! ? -1 : 1)),
+        ),
+      );
+    }
+    expect(partitions.size).toBeGreaterThan(1);
+  });
+
   it('a different seed still yields a valid partition (disjoint, full union)', () => {
     const map = allocateExpertChapters(['e1', 'e2', 'e3'], CHAPTERS, makeSeededRng(99));
     const all = Object.values(map).flat();

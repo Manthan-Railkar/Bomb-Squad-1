@@ -546,21 +546,26 @@ async function restoreReattachedSocket(
           if (timer !== null && bomb !== null) {
             socket.emit('BOMB_INIT', bomb);
             socket.emit('TIMER_UPDATE', timer);
-          }
-          // Story 9.1: re-restrict a reconnecting Expert. Read the current round
-          // and, if this player has a persisted chapter assignment, re-send it
-          // AFTER BOMB_INIT (same ordering as ROUND_START, so the client's
-          // setBomb reset lands first). Self-guarded — an unrestricted round has
-          // no `chapterAssignments`, so this is a no-op there.
-          const round = await deps.redis.getJSON<RoundState>(
-            roundKey(sessionId, latest.roundNumber),
-          );
-          const chapterIds = round?.chapterAssignments?.[playerId];
-          if (chapterIds !== undefined) {
-            socket.emit('EXPERT_CHAPTER_ASSIGNMENT', {
-              roundNumber: latest.roundNumber,
-              chapterIds,
-            });
+            // Story 9.1: re-restrict a reconnecting Expert. Read the current
+            // round and, if this player has a persisted chapter assignment,
+            // re-send it AFTER BOMB_INIT (same ordering as ROUND_START, so the
+            // client's setBomb reset lands first). INSIDE the both-or-neither
+            // gate: with no BOMB_INIT replay there is nothing to re-restrict —
+            // a reattach in the ROUND_START race window (round persisted, timer
+            // not yet armed) is covered by ROUND_START's own delivery loop,
+            // which re-fetches sockets (review 9.1). Self-guarded — an
+            // unrestricted round has no `chapterAssignments`, and an empty list
+            // is never delivered (fail-safe: no entry = full access).
+            const round = await deps.redis.getJSON<RoundState>(
+              roundKey(sessionId, latest.roundNumber),
+            );
+            const chapterIds = round?.chapterAssignments?.[playerId];
+            if (chapterIds !== undefined && chapterIds.length > 0) {
+              socket.emit('EXPERT_CHAPTER_ASSIGNMENT', {
+                roundNumber: latest.roundNumber,
+                chapterIds,
+              });
+            }
           }
         } catch (replayErr) {
           deps.log.info(
@@ -1516,7 +1521,10 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
               const seed = deriveTeamSeed(templateSeed, `${teamId}:expert-chapters`);
               const teamMap = allocateExpertChapters(experts, CHAPTER_IDS, makeSeededRng(seed));
               for (const [playerId, chapterIds] of Object.entries(teamMap)) {
-                assignments[playerId] = chapterIds;
+                // Fail-safe: more Experts than chapters deals a trailing Expert
+                // `[]` — never persist/deliver it (an empty assignment would
+                // render an empty-forever manual; no entry = full access).
+                if (chapterIds.length > 0) assignments[playerId] = chapterIds;
               }
             }
             if (Object.keys(assignments).length > 0) chapterAssignments = assignments;
@@ -1602,17 +1610,22 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
         }
 
         // Story 9.1: deliver each restricted Expert their OWN chapter set —
-        // TARGETED per-socket (reusing the roster `sockets` fetched above), never
-        // on the SESSION_STATE broadcast, so no Expert learns another's slice.
+        // TARGETED per-socket, never on the SESSION_STATE broadcast, so no
+        // Expert learns another's slice.
         // AFTER BOMB_INIT so the client's new-round reset (setBomb clears the
         // prior restriction) has landed before this re-sets it. Wrapped so a
         // delivery hiccup can't detonate an already-armed round (fail-safe: the
         // Expert falls back to the full manual, and reconnect re-delivers).
         if (chapterAssignments !== undefined) {
           try {
-            for (const member of sockets) {
+            // RE-fetch the roster (don't reuse the pre-persist `sockets`
+            // snapshot): an Expert who refreshed after the round persist read
+            // `timer === null` on reattach and got no replay — this fresh fetch
+            // is the only delivery that reaches their new socket (review 9.1).
+            const deliverTo = await io.in(sessionRoom(sessionId)).fetchSockets();
+            for (const member of deliverTo) {
               const chapterIds = chapterAssignments[member.data.playerId ?? ''];
-              if (chapterIds !== undefined) {
+              if (chapterIds !== undefined && chapterIds.length > 0) {
                 member.emit('EXPERT_CHAPTER_ASSIGNMENT', {
                   roundNumber: result.round.roundNumber,
                   chapterIds,
@@ -1918,6 +1931,53 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
         // Invalidate the kicked player's reattach token so they cannot re-attach
         // (a kick is permanent for this session, unlike a disconnect).
         await deleteReattachRecord(deps.redis, sessionId, parsed.playerId);
+
+        // Story 9.1 (review): fail-open the surviving Experts. If the removed
+        // player held a chapter assignment in the ACTIVE round, their 5-6
+        // chapters just became unreachable for the rest of the round (a kick is
+        // permanent — no reconnect can re-deliver them). Clear the whole team's
+        // restriction from the persisted round (so a survivor's reconnect gets
+        // full access) and unicast the full chapter set to each survivor's live
+        // socket (all 11 assigned = nothing locked). Self-guarded: a failure
+        // here must not fail the removal itself.
+        if (result.state.status === 'active') {
+          try {
+            const rKey = roundKey(sessionId, result.state.roundNumber);
+            const round = await deps.redis.getJSON<RoundState>(rKey);
+            if (round?.chapterAssignments?.[parsed.playerId] !== undefined) {
+              const removedTeamId = state.players[parsed.playerId]?.teamId;
+              const survivors = Object.values(result.state.players)
+                .filter((p) => p.teamId === removedTeamId && p.role === 'expert')
+                .map((p) => p.playerId);
+              const remaining = { ...round.chapterAssignments };
+              delete remaining[parsed.playerId];
+              for (const pid of survivors) delete remaining[pid];
+              await deps.redis.setJSON(rKey, {
+                ...round,
+                chapterAssignments:
+                  Object.keys(remaining).length > 0 ? remaining : undefined,
+              });
+              const members = await io.in(sessionRoom(sessionId)).fetchSockets();
+              for (const member of members) {
+                if (survivors.includes(member.data.playerId ?? '')) {
+                  member.emit('EXPERT_CHAPTER_ASSIGNMENT', {
+                    roundNumber: result.state.roundNumber,
+                    chapterIds: [...CHAPTER_IDS],
+                  });
+                }
+              }
+              deps.log.info(
+                { sessionId, removedPlayerId: parsed.playerId, survivors },
+                'restricted Expert removed mid-round; survivors fail-open to full manual',
+              );
+            }
+          } catch (failOpenErr) {
+            deps.log.error(
+              { failOpenErr, sessionId, removedPlayerId: parsed.playerId },
+              'chapter fail-open after removal failed; survivors keep their restriction until reconnect',
+            );
+          }
+        }
 
         // Notify the removed player's live socket(s), then broadcast the new roster.
         const room = io.sockets.adapter.rooms.get(sessionRoom(sessionId));

@@ -82,6 +82,12 @@ export function bindServerEvents(socket: AppClientSocket): () => void {
   // Experts); an unrestricted round never sends it, so the store stays null (full
   // manual). Also re-sent on reconnect.
   const onExpertChapterAssignment = (payload: ExpertChapterAssignmentPayload) => {
+    // Staleness guard (review 9.1): the payload carries its round for exactly
+    // this — a late/replayed delivery from a PRIOR round must never restrict
+    // the current one. SESSION_STATE always precedes the assignment on both
+    // the ROUND_START and reattach paths, so a mismatch means stale → drop.
+    const currentRound = useGameStore.getState().session?.roundNumber;
+    if (currentRound !== undefined && payload.roundNumber !== currentRound) return;
     setAssignedChapters(payload.chapterIds);
   };
   // Durable identity (Story 2.7): persist the private packet so a refresh can

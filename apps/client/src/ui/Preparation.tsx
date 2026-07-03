@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ErrorPayload, TeamId } from '@bomb-squad/shared';
+import { CHAPTER_IDS } from '@bomb-squad/shared';
 import { useGameStore } from '../store/gameStore.js';
 import { getSocket } from '../net/socket.js';
 import ConfirmButton from './ConfirmButton.js';
@@ -57,8 +58,14 @@ export default function Preparation() {
   const [startError, setStartError] = useState<string | null>(null);
 
   // getManualPages() is pure and the registry is import-time static — build once.
+  // Filter to the 11 real chapters (drop sandbox-only `dev-demo`) so chapter
+  // numbers here match the active round's manual exactly (review 9.1 — the
+  // numbers players memorise in preparation must survive into the round).
   const chapters = useMemo(
-    () => buildChapters(SANDBOX_MODULES.flatMap((m) => m.getManualPages())),
+    () =>
+      buildChapters(SANDBOX_MODULES.flatMap((m) => m.getManualPages())).filter((c) =>
+        (CHAPTER_IDS as readonly string[]).includes(c.chapterId),
+      ),
     [],
   );
 

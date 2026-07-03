@@ -129,7 +129,7 @@ development_status:
 
   # ---- Epic 9: Advanced Features ----
   epic-9: in-progress                                # first story (9-1) created 2026-07-03 → epic in-progress
-  9-1-asymmetric-expert-roles: review                # dev-story complete 2026-07-03 (Tasks 1–7); shared+server+client green, typecheck clean; human verification (Jay) pending
+  9-1-asymmetric-expert-roles: review                # code review PASSED 2026-07-03 (3-layer adversarial): all 4 ACs satisfied; 7 patches applied per Jay's decisions (chapter-level shuffle, reattach-race hardening, empty-assignment fail-safe, stable numbering, teamless standby, PLAYER_REMOVE fail-open, leak test) + 10 tests; shared 504/server 595/client 491/e2e 24 green; ONLY human verification (Jay) pending → then done
   9-2-spectator-lifeline-token-economy: review        # dev-story complete 2026-07-03 (Tasks 1–6); shared 503/server 592/client 483 green, typecheck clean; grant at resolveRound (per-earner resilient) + reconnect re-hydration + client counter; Design Decision 1 = spectators+resting (AFK-default); resolved 9.1-review carry-over grant-loop finding; human verification (Jay) pending
   9-3-send-a-lifeline-hint: ready-for-dev               # story file created 2026-07-03 (gds-create-story) — consumer of dormant LIFELINE_SEND/TOAST; fixed prompt list + spend handler + first client toast. Depends on 9-2
   9-4-spectator-lounge-view: backlog

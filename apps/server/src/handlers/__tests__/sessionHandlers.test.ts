@@ -3725,4 +3725,79 @@ describe('ROUND_START — Asymmetric Expert Roles (Story 9.1)', () => {
     expect(replay.chapterIds).toEqual(original.chapterIds);
     rejoined.disconnect();
   });
+
+  it('each Expert receives EXACTLY ONE assignment and never the other Expert’s slice (review 9.1)', async () => {
+    const { experts } = await prepared({ modifier: true, expertCount: 2 });
+    const seen: Array<Array<{ roundNumber: number; chapterIds: string[] }>> = [[], []];
+    experts.forEach((s, i) =>
+      s.on(
+        'EXPERT_CHAPTER_ASSIGNMENT' as 'SESSION_STATE',
+        ((p: { roundNumber: number; chapterIds: string[] }) => seen[i]!.push(p)) as never,
+      ),
+    );
+    facilitator.emit('ROUND_START');
+    await onceEvent(experts[0]!, 'BOMB_INIT');
+    await new Promise((r) => setTimeout(r, 80));
+
+    // Exactly one targeted delivery per Expert — no duplicate, no cross-send.
+    expect(seen[0]!.length).toBe(1);
+    expect(seen[1]!.length).toBe(1);
+    const [a, b] = [seen[0]![0]!.chapterIds, seen[1]![0]!.chapterIds];
+    expect(a).not.toEqual(b);
+    expect(a.filter((c) => b.includes(c))).toEqual([]);
+  });
+
+  it('more Experts than chapters (12) → the []-dealt Expert gets NO event and no [] is persisted (fail-safe)', async () => {
+    const { sessionId, experts } = await prepared({ modifier: true, expertCount: 12 });
+    const perExpert = experts.map(() => 0);
+    const emptiesSeen: string[][] = [];
+    experts.forEach((s, i) =>
+      s.on(
+        'EXPERT_CHAPTER_ASSIGNMENT' as 'SESSION_STATE',
+        ((p: { chapterIds: string[] }) => {
+          perExpert[i] = perExpert[i]! + 1;
+          if (p.chapterIds.length === 0) emptiesSeen.push(p.chapterIds);
+        }) as never,
+      ),
+    );
+    facilitator.emit('ROUND_START');
+    await onceEvent(experts[0]!, 'BOMB_INIT');
+    await new Promise((r) => setTimeout(r, 120));
+
+    // 11 chapters across 12 Experts: 11 deliveries, the trailing Expert is
+    // SKIPPED (no entry = full access) rather than sent an empty-forever [].
+    expect(perExpert.reduce((sum, n) => sum + n, 0)).toBe(11);
+    expect(perExpert.filter((n) => n === 0).length).toBe(1);
+    expect(emptiesSeen).toEqual([]);
+    const round = JSON.parse(store.data.get(roundKey(sessionId, 1))!) as RoundState;
+    const lists = Object.values(round.chapterAssignments ?? {});
+    expect(lists.length).toBe(11);
+    expect(lists.every((l) => l.length === 1)).toBe(true);
+  });
+
+  it('removing a restricted Expert mid-round fail-opens the survivor to the full manual (review 9.1)', async () => {
+    const { sessionId, experts, ids } = await prepared({ modifier: true, expertCount: 2 });
+    const first = onceEvent<{ chapterIds: string[] }>(experts[0]!, 'EXPERT_CHAPTER_ASSIGNMENT');
+    void onceEvent(experts[1]!, 'EXPERT_CHAPTER_ASSIGNMENT');
+    facilitator.emit('ROUND_START');
+    const original = await first;
+    expect(original.chapterIds.length).toBeLessThan(CHAPTER_IDS.length);
+
+    // The facilitator kicks the OTHER restricted Expert mid-round: their 5-6
+    // chapters would be stranded forever (a kick deletes the reattach record),
+    // so the survivor must fail open to the full manual.
+    const unlocked = onceEvent<{ roundNumber: number; chapterIds: string[] }>(
+      experts[0]!,
+      'EXPERT_CHAPTER_ASSIGNMENT',
+    );
+    facilitator.emit('PLAYER_REMOVE', { playerId: ids.experts[1]! });
+    const failOpen = await unlocked;
+    expect(failOpen.roundNumber).toBe(1);
+    expect([...failOpen.chapterIds].sort()).toEqual([...CHAPTER_IDS].sort());
+
+    // The persisted restriction is cleared too — a survivor who reconnects
+    // stays full-access instead of re-restricting to the stale half.
+    const round = JSON.parse(store.data.get(roundKey(sessionId, 1))!) as RoundState;
+    expect(round.chapterAssignments).toBeUndefined();
+  });
 });

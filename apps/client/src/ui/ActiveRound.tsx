@@ -46,9 +46,10 @@ export default function ActiveRound() {
     () => buildChapters(SANDBOX_MODULES.flatMap((m) => m.getManualPages())),
     [],
   );
-  // When restricted, drop the sandbox-only `dev-demo` chapter so it never shows
-  // as a stray locked row, and number the manual as the canonical 11-module
-  // order. When unrestricted, the full list (incl. dev-demo) is unchanged.
+  // Drop the sandbox-only `dev-demo` chapter from BOTH manual paths (review
+  // 9.1): if the unrestricted list kept dev-demo as chapter 1, every real
+  // chapter's number would shift by one between restricted and unrestricted
+  // rounds — poison for a game whose loop is shouting chapter numbers.
   const realChapters = useMemo(
     () => chapters.filter((c) => (CHAPTER_IDS as readonly string[]).includes(c.chapterId)),
     [chapters],
@@ -94,18 +95,22 @@ export default function ActiveRound() {
         {lifelineCounter}
       </div>
     );
-  } else if (role === 'defuser') {
+  } else if (role === 'defuser' && myTeamId !== undefined) {
     surface = (
       <BombStage>
         <BombScene />
       </BombStage>
     );
-  } else if (role === 'expert') {
+  } else if (role === 'expert' && myTeamId !== undefined) {
+    // Teamless expert/defuser (joined between rounds; TEAM_ASSIGN is
+    // lobby-locked so they can never be teamed) falls through to standby —
+    // otherwise a fresh-name rejoin would hold the FULL manual while the
+    // active team's Experts are split (restriction bypass, review 9.1).
     surface =
       assignedChapterIds !== null ? (
         <ManualViewer chapters={realChapters} assignedChapterIds={assignedChapterIds} />
       ) : (
-        <ManualViewer chapters={chapters} />
+        <ManualViewer chapters={realChapters} />
       );
   } else {
     surface = (
