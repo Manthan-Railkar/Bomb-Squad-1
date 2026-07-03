@@ -11,6 +11,16 @@
  *  4. the Facilitator never sees the counter. (AC-3/AC-4 — own count only)
  *  5. modifier OFF → no counter renders at all. (AC-2)
  *
+ * NOT covered here (review 9.2, deliberately): the modifier-off→reload→on
+ * counter-desync fix. The config panel renders only in the Lobby and
+ * `cancelPreparation` returns to between-rounds once roundNumber ≥ 2, so a
+ * MID-SESSION toggle is unreachable through the UI — only a raw ROUND_CONFIGURE
+ * socket call (server-accepted between rounds) can trigger it. Both server
+ * fixes (unconditional reattach re-hydration + OFF→ON re-delivery) are pinned
+ * by unit tests in sessionHandlers.test.ts. If a between-rounds config panel
+ * ever ships, add the e2e: earn → toggle off → reload spectator → toggle on →
+ * counter shows the persisted balance, never a stale 0.
+ *
  * TOPOLOGY (deterministic, no bots — no TD-5 swarm to leak): a SINGLE team A
  * whose relayOrder is a line of browser Defusers (D1…D5). With team B absent,
  * `selectActiveTeam` picks A every round until its rotation exhausts, so round N's
@@ -77,13 +87,7 @@ async function hostLifelineSession(
   // Assign every Defuser to team A in order (SEQUENTIAL — TD-5 load-modify-store).
   for (const name of names) await assignTeam(facilitator, name, 'A');
 
-  if (opts.modifier) {
-    const toggle = facilitator.getByRole('switch', { name: 'Spectator lifelines' });
-    await expect(async () => {
-      if ((await toggle.getAttribute('aria-checked')) !== 'true') await toggle.click();
-      await expect(toggle).toHaveAttribute('aria-checked', 'true', { timeout: 3_000 });
-    }).toPass({ timeout: 15_000 });
-  }
+  if (opts.modifier) await setLifelinesModifier(facilitator, true);
 
   await configureWiresOnly(facilitator);
 
@@ -93,6 +97,17 @@ async function hostLifelineSession(
     defusers,
     cleanup: () => Promise.all(contexts.map((c) => c.close())).then(() => undefined),
   };
+}
+
+/** Flip the Facilitator's Spectator-lifelines switch to `on` (lobby only — the
+ * RoundConfigPanel renders only there). Retries around SESSION_STATE races. */
+async function setLifelinesModifier(facilitator: Page, on: boolean): Promise<void> {
+  const want = on ? 'true' : 'false';
+  const toggle = facilitator.getByRole('switch', { name: 'Spectator lifelines' });
+  await expect(async () => {
+    if ((await toggle.getAttribute('aria-checked')) !== want) await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-checked', want, { timeout: 3_000 });
+  }).toPass({ timeout: 15_000 });
 }
 
 /** Sam's live counter must read exactly N tokens (polls until the render lands). */
@@ -116,7 +131,10 @@ test('modifier ON: a spectator earns 1 token per watched round, caps at 3, and r
     await openPreparation(facilitator);
     await startTheRound(facilitator);
     await expectSamTokens(sam, 0);
-    // The Facilitator never sees a counter (own-count-only delivery).
+    // The Facilitator never sees a counter — their surface renders no counter
+    // branch (review 9.2: this asserts ROUTING only; the own-count-only targeted
+    // delivery is pinned server-side in resolveRoundLifelines.test.ts, which
+    // asserts the facilitator's socket receives no LIFELINE_TOKENS emit).
     await expect(facilitator.getByTestId(COUNTER)).toHaveCount(0);
     await solveWiresBombInBrowser(defusers[0]!);
     await expectBetweenRounds(facilitator);

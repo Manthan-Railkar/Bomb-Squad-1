@@ -33,6 +33,10 @@ function seed(opts: { viewer: string; spectatorLifelines: boolean; tokens: numbe
       ad: makePlayer({ playerId: 'ad', displayName: 'Ada', role: 'defuser', teamId: 'A' }),
       bd: makePlayer({ playerId: 'bd', displayName: 'Bex', role: 'defuser', teamId: 'B' }),
       sp: makePlayer({ playerId: 'sp', displayName: 'Sam', role: 'spectator' }),
+      // Teamless defuser (joined between rounds; TEAM_ASSIGN is lobby-locked) —
+      // an earner on the ROUND_IN_PROGRESS fallback surface (review 9.2).
+      td: makePlayer({ playerId: 'td', displayName: 'Tia', role: 'defuser' }),
+      fac: makePlayer({ playerId: 'fac', displayName: 'Fin', role: 'facilitator' }),
     },
     teams: { A: makeTeam('A', ['ad']), B: makeTeam('B', ['bd']) },
   });
@@ -72,6 +76,18 @@ describe('ActiveRound — lifeline token counter (Story 9.2)', () => {
     seed({ viewer: 'ad', spectatorLifelines: true, tokens: 2 });
     render(<ActiveRound />);
     expect(screen.getByTestId('bomb-stage')).toBeInTheDocument();
+    expect(screen.queryByTestId('lifeline-token-counter')).not.toBeInTheDocument();
+  });
+
+  it('shows the counter to a TEAMLESS defuser on the fallback surface (they earn — review 9.2)', () => {
+    seed({ viewer: 'td', spectatorLifelines: true, tokens: 1 });
+    render(<ActiveRound />);
+    expect(screen.getByTestId('lifeline-token-counter')).toHaveTextContent('Lifeline tokens: 1');
+  });
+
+  it('does NOT show the counter to the facilitator (they never earn)', () => {
+    seed({ viewer: 'fac', spectatorLifelines: true, tokens: 2 });
+    render(<ActiveRound />);
     expect(screen.queryByTestId('lifeline-token-counter')).not.toBeInTheDocument();
   });
 });

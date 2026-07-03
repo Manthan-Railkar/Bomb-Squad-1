@@ -60,12 +60,14 @@ const MODIFIERS_OFF: ModifierConfig = { asymmetricExpertRoles: false, spectatorL
 
 /**
  * Roster: an active-team defuser (played), a resting-team defuser (watched), a
- * genuine spectator (watched), and the facilitator (never earns).
+ * genuine spectator (watched), a TEAMLESS defuser (joined between rounds —
+ * watched; review 9.2 pins that they earn), and the facilitator (never earns).
  */
 const ROSTER: Record<string, PlayerInfo> = {
   ad: { playerId: 'ad', displayName: 'Ada', role: 'defuser', teamId: 'A', isReady: true },
   bd: { playerId: 'bd', displayName: 'Bex', role: 'defuser', teamId: 'B', isReady: true },
   sp: { playerId: 'sp', displayName: 'Sam', role: 'spectator', isReady: true },
+  td: { playerId: 'td', displayName: 'Tia', role: 'defuser', isReady: true },
   fac: { playerId: 'fac', displayName: 'Fin', role: 'facilitator', isReady: true },
 };
 
@@ -138,19 +140,21 @@ const loadLifelines = (h: Harness) =>
 const tokenEmits = (h: Harness) => h.memberEmits.filter((m) => m.event === 'LIFELINE_TOKENS');
 
 describe('resolveRound — lifeline grant (Story 9.2, AC-1/AC-4)', () => {
-  it('grants +1 to every watcher (resting-team + spectator), NOT the active team or facilitator', async () => {
+  it('grants +1 to every watcher (resting-team + spectator + teamless), NOT the active team or facilitator', async () => {
     const h = await makeHarness();
     await resolveRound(h.deps, SID, 'A', 'defused', 60_000);
 
-    // Only the two watchers are in the map; the active-team defuser and the
-    // facilitator are absent (never granted).
-    expect(await loadLifelines(h)).toEqual({ bd: 1, sp: 1 });
+    // Only the three watchers are in the map; the active-team defuser and the
+    // facilitator are absent (never granted). The teamless defuser earning is
+    // Design Decision 1 as resolved at review: they watched, they earn.
+    expect(await loadLifelines(h)).toEqual({ bd: 1, sp: 1, td: 1 });
 
-    // Targeted delivery: bd + sp each receive their OWN count; ad + fac get none.
+    // Targeted delivery: each watcher receives their OWN count; ad + fac get none.
     const emits = tokenEmits(h);
-    expect(emits).toHaveLength(2);
+    expect(emits).toHaveLength(3);
     expect(emits.find((e) => e.playerId === 'bd')?.payload).toEqual({ count: 1 });
     expect(emits.find((e) => e.playerId === 'sp')?.payload).toEqual({ count: 1 });
+    expect(emits.find((e) => e.playerId === 'td')?.payload).toEqual({ count: 1 });
     expect(emits.some((e) => e.playerId === 'ad')).toBe(false);
     expect(emits.some((e) => e.playerId === 'fac')).toBe(false);
   });
@@ -191,14 +195,20 @@ describe('resolveRound — lifeline grant (Story 9.2, AC-1/AC-4)', () => {
   it('grants on a FAILED round too (watching is watching, regardless of outcome)', async () => {
     const h = await makeHarness();
     await resolveRound(h.deps, SID, 'A', 'time-expired', TIMER_MS + 1);
-    expect(await loadLifelines(h)).toEqual({ bd: 1, sp: 1 });
+    expect(await loadLifelines(h)).toEqual({ bd: 1, sp: 1, td: 1 });
   });
 
   it('a total lifelines failure never fails the resolution (fail-safe) — round still records + broadcasts', async () => {
     const h = await makeHarness();
     // Every grant throws (Redis down). Per-earner catch swallows each → no tokens,
-    // no emits, but the round is already recorded and broadcast.
-    h.deps.redis.updateJSON = () => Promise.reject(new Error('redis down'));
+    // no emits, but the round is already recorded and broadcast. Scoped to the
+    // lifelines key ONLY (review 9.2): an all-key rejection would silently start
+    // asserting the wrong failure if the ceremony itself ever adopts updateJSON.
+    const realUpdate = h.deps.redis.updateJSON.bind(h.deps.redis);
+    h.deps.redis.updateJSON = ((key, mutate, opts) =>
+      key === lifelinesKey(SID)
+        ? Promise.reject(new Error('redis down'))
+        : realUpdate(key, mutate, opts)) as typeof h.deps.redis.updateJSON;
     await expect(resolveRound(h.deps, SID, 'A', 'defused', 60_000)).resolves.toBeUndefined();
     const after = (await h.store.getJSON<SessionState>(sessionKey(SID)))!;
     expect(after.status).toBe('between-rounds');
@@ -207,24 +217,37 @@ describe('resolveRound — lifeline grant (Story 9.2, AC-1/AC-4)', () => {
   });
 
   it('a PARTIAL grant failure does not strand the other earners (per-earner resilience)', async () => {
-    // Earner order is [bd, sp]; fail ONLY the 2nd grantToken (sp). bd must still be
-    // granted AND notified; sp gets neither — but the failure of one never aborts
-    // the loop (the defect flagged in the 9.1-review carry-over).
+    // Fail ONLY sp's grant, identified by WHICH PLAYER the mutate targets — not by
+    // call ordinal (review 9.2: an ordinal couples the test to earner iteration
+    // order and to how many updateJSON calls precede the grant loop). bd must
+    // still be granted AND notified; sp gets neither — the failure of one never
+    // aborts the loop (the defect flagged in the 9.1-review carry-over).
     const h = await makeHarness();
     const realUpdate = h.deps.redis.updateJSON.bind(h.deps.redis);
-    let calls = 0;
-    h.deps.redis.updateJSON = ((key, mutate, opts) => {
-      calls += 1;
-      if (calls === 2) return Promise.reject(new Error('redis blip for the 2nd earner'));
+    h.deps.redis.updateJSON = (async (key, mutate, opts) => {
+      if (key === lifelinesKey(SID)) {
+        // Probe the pure mutate to see whose entry this grant would move.
+        const current = await h.store.getJSON<Record<string, number>>(lifelinesKey(SID));
+        const probe = (mutate as (c: Record<string, number> | null) => {
+          commit: boolean;
+          value?: Record<string, number>;
+        })(current);
+        if (probe.commit && probe.value?.sp !== current?.sp) {
+          return Promise.reject(new Error("redis blip for sp's grant"));
+        }
+      }
       return realUpdate(key, mutate, opts);
     }) as typeof h.deps.redis.updateJSON;
 
     await resolveRound(h.deps, SID, 'A', 'defused', 60_000);
 
-    // bd persisted + notified; sp neither.
-    expect(await loadLifelines(h)).toEqual({ bd: 1 });
+    // bd + td persisted + notified; sp neither — the loop survived sp's failure
+    // and carried on to the earners AFTER it.
+    expect(await loadLifelines(h)).toEqual({ bd: 1, td: 1 });
     const emits = tokenEmits(h);
-    expect(emits).toHaveLength(1);
-    expect(emits[0]).toMatchObject({ playerId: 'bd', payload: { count: 1 } });
+    expect(emits).toHaveLength(2);
+    expect(emits.find((e) => e.playerId === 'bd')?.payload).toEqual({ count: 1 });
+    expect(emits.find((e) => e.playerId === 'td')?.payload).toEqual({ count: 1 });
+    expect(emits.some((e) => e.playerId === 'sp')).toBe(false);
   });
 });

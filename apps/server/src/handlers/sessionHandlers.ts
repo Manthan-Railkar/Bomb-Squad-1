@@ -53,6 +53,7 @@ import { pauseSession, resumeSession, canResume, clearDisconnectedPlayer } from 
 import { freezeRoundTimers, resumeRoundTimers } from '../timer/pauseTimers.js';
 import { initializeRoundBombs } from '../round/initializeRoundBombs.js';
 import { getTokens } from '../lifelines/lifelineTokens.js';
+import { afterSessionCeremony } from '../round/sessionChain.js';
 
 /**
  * Server-assigned per-socket bookkeeping (Socket.IO `socket.data`). Pointers
@@ -576,23 +577,30 @@ async function restoreReattachedSocket(
       }
     }
 
-    // Story 9.2: re-hydrate the reconnecting player's lifeline-token counter. Only
-    // when the modifier is on — then emit the authoritative count even if 0, so the
-    // client's counter re-mounts to the stored value on reload (same "reconnect
-    // re-delivers persisted state" posture as BOMB_INIT/EXPERT_CHAPTER_ASSIGNMENT
-    // above). Runs for ALL reconnecting players regardless of team/status — a
-    // genuine spectator (no teamId, never in the active-replay block above) still
-    // re-hydrates. Self-guarded so a lifelines read failure never fails the reattach.
-    if (latest.config.modifiers.spectatorLifelines) {
-      try {
+    // Story 9.2: re-hydrate the reconnecting player's lifeline-token counter with
+    // the authoritative count, even if 0, so the counter re-mounts to the stored
+    // value on reload (same "reconnect re-delivers persisted state" posture as
+    // BOMB_INIT/EXPERT_CHAPTER_ASSIGNMENT above). UNCONDITIONAL on the modifier
+    // (review 9.2): the client hides the counter via its render gate, so emitting
+    // while the modifier is off is invisible — but NOT emitting left a reloaded
+    // client's store at 0, and a later off→on toggle rendered that stale 0 while
+    // Redis held the real balance. Serialized behind any in-flight resolution
+    // ceremony (review 9.2): an unserialized read could grab the pre-grant count
+    // and emit it AFTER the ceremony's own delivery, leaving the stale value as
+    // the last write. Runs for ALL reconnecting players regardless of team/status
+    // — a genuine spectator (no teamId, never in the active-replay block above)
+    // still re-hydrates. Self-guarded so a lifelines failure never fails the
+    // reattach.
+    try {
+      await afterSessionCeremony(sessionId, async () => {
         const count = await getTokens(deps.redis, sessionId, playerId);
         socket.emit('LIFELINE_TOKENS', { count });
-      } catch (lifelineErr) {
-        deps.log.info(
-          { lifelineErr, sessionId, playerId },
-          'lifeline token re-hydration skipped',
-        );
-      }
+      });
+    } catch (lifelineErr) {
+      deps.log.info(
+        { lifelineErr, sessionId, playerId },
+        'lifeline token re-hydration skipped',
+      );
     }
 
     deps.log.info({ sessionId, playerId, restored }, 'socket reattached');
@@ -1344,6 +1352,36 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
         // Persist then emit. Single-key write — nothing partial to roll back.
         await deps.redis.setJSON(sessionKey(sessionId), next);
         io.to(sessionRoom(sessionId)).emit('SESSION_STATE', next);
+
+        // Story 9.2 (review): spectatorLifelines toggled OFF→ON re-delivers every
+        // connected player their own persisted token count. Balances survive a
+        // toggle cycle by design (the off-state HIDE is a client render gate, not
+        // a wipe) — but a client that (re)connected while the modifier was off
+        // holds a default-0 store, so without this push the re-enabled counter
+        // would render a stale 0 until the next grant. Targeted per-socket emits,
+        // never on SESSION_STATE (AC-3); best-effort — a lifelines failure never
+        // fails the configure.
+        if (
+          !state.config.modifiers.spectatorLifelines &&
+          next.config.modifiers.spectatorLifelines
+        ) {
+          try {
+            const sockets = await io.in(sessionRoom(sessionId)).fetchSockets();
+            for (const member of sockets) {
+              const memberId = member.data.playerId;
+              if (memberId === undefined) continue;
+              member.emit('LIFELINE_TOKENS', {
+                count: await getTokens(deps.redis, sessionId, memberId),
+              });
+            }
+          } catch (lifelineErr) {
+            deps.log.info(
+              { lifelineErr, sessionId },
+              'lifeline re-delivery on modifier enable skipped',
+            );
+          }
+        }
+
         deps.log.info(
           {
             sessionId,

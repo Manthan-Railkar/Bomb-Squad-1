@@ -48,7 +48,10 @@ import {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** Promise for the next emission of a server event on a client socket. */
-function nextEvent<T>(socket: TestClientSocket, event: 'SESSION_STATE' | 'ERROR'): Promise<T> {
+function nextEvent<T>(
+  socket: TestClientSocket,
+  event: 'SESSION_STATE' | 'ERROR' | 'LIFELINE_TOKENS',
+): Promise<T> {
   return new Promise<T>((resolve) => {
     socket.once(event, ((payload: T) => resolve(payload)) as never);
   });
@@ -2050,10 +2053,15 @@ describe('Story 2.7: durable identity, disconnect cleanup, PLAYER_REMOVE, reatta
     reconnected.disconnect();
   });
 
-  it('NO LIFELINE_TOKENS on reconnect when the modifier is off (AC-2)', async () => {
+  it('re-delivers the persisted count on reconnect even when the modifier is OFF (review 9.2)', async () => {
+    // The reattach emit is UNCONDITIONAL on the modifier: the client hides the
+    // counter via its render gate (AC-2), but its store must hold the REAL
+    // balance so a later off→on toggle never renders a stale 0. (Replaces the
+    // pre-review negative test, which raced a 150ms timeout and whose behaviour
+    // — skip the emit when off — was itself the desync under review.)
     const { ack } = await createWithIdentity();
     const { socket, identity } = await joinWithIdentity(ack.joinCode, 'Sam', 'spectator');
-    // Modifier stays OFF (default). Even a stray seeded count must not be re-sent.
+    // Modifier stays OFF (default); the persisted balance is still re-sent.
     await store.setJSON(lifelinesKey(ack.sessionId), { [identity.playerId]: 3 });
     socket.disconnect();
 
@@ -2061,14 +2069,27 @@ describe('Story 2.7: durable identity, disconnect cleanup, PLAYER_REMOVE, reatta
       { sessionId: ack.sessionId, reattachToken: identity.reattachToken },
       ['LIFELINE_TOKENS'],
     );
-    // The event must never arrive — race it against a short timeout.
-    const sentinel = Symbol('none');
-    const result = await Promise.race([
-      events.LIFELINE_TOKENS,
-      new Promise((r) => setTimeout(() => r(sentinel), 150)),
-    ]);
-    expect(result).toBe(sentinel);
+    expect(await events.LIFELINE_TOKENS).toEqual({ count: 3 });
     reconnected.disconnect();
+  });
+
+  it('OFF→ON modifier toggle re-delivers every connected player their own count (review 9.2)', async () => {
+    // A client that (re)connected while the modifier was off holds a default-0
+    // store. Re-enabling the modifier must push the authoritative balance so the
+    // re-shown counter never renders a stale 0 until the next grant.
+    const { ack } = await createWithIdentity();
+    const { socket, identity } = await joinWithIdentity(ack.joinCode, 'Sam', 'spectator');
+    await store.setJSON(lifelinesKey(ack.sessionId), { [identity.playerId]: 2 });
+
+    const tokens = nextEvent<{ count: number }>(socket, 'LIFELINE_TOKENS');
+    const session = (await store.getJSON<SessionState>(sessionKey(ack.sessionId)))!;
+    facilitator.emit('ROUND_CONFIGURE', {
+      config: {
+        ...session.config,
+        modifiers: { ...session.config.modifiers, spectatorLifelines: true },
+      },
+    });
+    expect(await tokens).toEqual({ count: 2 });
   });
 
   it('a refresh within the grace window preserves the player team + role + relayOrder (AC 4 — same seat)', async () => {

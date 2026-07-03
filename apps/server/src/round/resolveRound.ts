@@ -43,6 +43,7 @@ import { remainingMs } from '../timer/timerCore.js';
 import type { TimerScheduler } from '../timer/timerScheduler.js';
 import { buildScoreboard } from './buildScoreboard.js';
 import { grantToken } from '../lifelines/lifelineTokens.js';
+import { afterSessionCeremony } from './sessionChain.js';
 
 export interface ResolveRoundDeps {
   redis: RedisStore;
@@ -58,24 +59,11 @@ export interface ResolveRoundDeps {
 }
 
 /**
- * Per-session serialization chain (single-process V1). Both racing teams share
- * ONE `sessionKey`, and `resolveRound` does a read-modify-write of that session
- * to add `cumulativeTimeMs`. With no CAS primitive on `RedisStore` (only
- * get/set/del), two teams resolving concurrently would both read the same
- * baseline and the second `setJSON` would clobber the first team's recorded
- * time. We serialize all resolutions for a given session through a promise chain
- * so each read-modify-write runs to completion before the next begins. This
- * matches the documented single-process posture (timerScheduler header); a
- * multi-instance deployment would need a Redis-side atomic increment / WATCH.
- */
-const sessionChains = new Map<string, Promise<void>>();
-
-/**
  * Resolve one team's round to a terminal `outcome`. `now` is the
  * server-authoritative instant the resolution fires (injected wall clock — never
  * `Date.now()`); it dates the displayed-elapsed computation.
  *
- * Serialized per session (see `sessionChains`): the actual ceremony runs in
+ * Serialized per session (see `sessionChain.ts`): the actual ceremony runs in
  * `resolveRoundCeremony`; this entry point queues it behind any in-flight
  * resolution for the same session so concurrent two-team resolutions cannot
  * clobber each other's `cumulativeTimeMs`.
@@ -87,19 +75,9 @@ export function resolveRound(
   outcome: RoundOutcome,
   now: number,
 ): Promise<void> {
-  const prior = sessionChains.get(sessionId) ?? Promise.resolve();
-  const next = prior.then(() => resolveRoundCeremony(deps, sessionId, teamId, outcome, now));
-  // Track the chain swallowing errors so one failed resolution never poisons a
-  // sibling team's queued resolution; callers still see `next`'s real outcome.
-  const tracked = next.then(
-    () => {},
-    () => {},
+  return afterSessionCeremony(sessionId, () =>
+    resolveRoundCeremony(deps, sessionId, teamId, outcome, now),
   );
-  sessionChains.set(sessionId, tracked);
-  void tracked.then(() => {
-    if (sessionChains.get(sessionId) === tracked) sessionChains.delete(sessionId);
-  });
-  return next;
 }
 
 async function resolveRoundCeremony(
@@ -173,7 +151,7 @@ async function resolveRoundCeremony(
   // the shared session status stays 'active' so a still-playing team is never
   // routed off its bomb mid-round (preserves Story 8.5 AC-3 end-to-end). This
   // read-check is race-safe because the whole ceremony runs inside the per-session
-  // serialization chain (see `sessionChains`): two teams cannot both observe the
+  // serialization chain (see `sessionChain.ts`): two teams cannot both observe the
   // other as still-live.
   let anotherTeamStillLive = false;
   for (const otherTeamId of Object.keys(round.defusers) as TeamId[]) {
@@ -329,9 +307,12 @@ async function resolveRoundCeremony(
       // "no tokens" while some were already persisted). Only the successes are
       // collected for delivery. Serialized inside the per-session ceremony chain.
       const counts = new Map<string, number>();
+      let minted = 0;
       for (const earner of earners) {
         try {
-          counts.set(earner.playerId, await grantToken(deps.redis, sessionId, earner.playerId));
+          const grant = await grantToken(deps.redis, sessionId, earner.playerId);
+          counts.set(earner.playerId, grant.count);
+          if (grant.minted) minted += 1;
         } catch (grantErr) {
           deps.log.error(
             { grantErr, sessionId, roundNumber, playerId: earner.playerId },
@@ -358,9 +339,13 @@ async function resolveRoundCeremony(
           'lifeline token delivery failed; counts persisted, clients re-hydrate on reconnect',
         );
       }
-      // `granted` counts the tokens actually PERSISTED (not merely the earner
-      // count), so the log never overstates a partial grant.
-      deps.log.info({ sessionId, roundNumber, granted: counts.size }, 'lifeline tokens granted');
+      // `granted` counts the tokens actually MINTED (a clamped grant at the cap
+      // persists nothing), `notified` the earners whose count was re-delivered —
+      // so the log never overstates a partial or fully-clamped grant (review 9.2).
+      deps.log.info(
+        { sessionId, roundNumber, granted: minted, notified: counts.size },
+        'lifeline tokens granted',
+      );
     }
   }
 }

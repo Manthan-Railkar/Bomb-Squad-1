@@ -26,24 +26,28 @@ describe('lifelineTokens — getTokens (fail-closed)', () => {
 });
 
 describe('lifelineTokens — grantToken (increment + cap)', () => {
-  it('grants the first token (absent key ⇒ {} ⇒ 1)', async () => {
+  it('grants the first token (absent key ⇒ {} ⇒ 1) and reports it minted', async () => {
     const store = createMemoryRedisStore();
-    expect(await grantToken(store, SID, 'spec-1')).toBe(1);
+    expect(await grantToken(store, SID, 'spec-1')).toEqual({ count: 1, minted: true });
     expect(await getTokens(store, SID, 'spec-1')).toBe(1);
   });
 
   it('increments an existing count', async () => {
     const store = createMemoryRedisStore();
     await grantToken(store, SID, 'spec-1');
-    expect(await grantToken(store, SID, 'spec-1')).toBe(2);
+    expect(await grantToken(store, SID, 'spec-1')).toEqual({ count: 2, minted: true });
   });
 
-  it('clamps at MAX_LIFELINE_TOKENS — a grant at the cap stays at the cap', async () => {
+  it('clamps at MAX_LIFELINE_TOKENS — a grant at the cap stays at the cap, minted: false', async () => {
     const store = createMemoryRedisStore();
     for (let i = 0; i < MAX_LIFELINE_TOKENS; i++) await grantToken(store, SID, 'spec-1');
     expect(await getTokens(store, SID, 'spec-1')).toBe(MAX_LIFELINE_TOKENS);
-    // A further grant is idempotent at the ceiling — no overflow, no error.
-    expect(await grantToken(store, SID, 'spec-1')).toBe(MAX_LIFELINE_TOKENS);
+    // A further grant is idempotent at the ceiling — no overflow, no error, and
+    // it reports minted: false so the grant log never overstates (review 9.2).
+    expect(await grantToken(store, SID, 'spec-1')).toEqual({
+      count: MAX_LIFELINE_TOKENS,
+      minted: false,
+    });
     expect(await getTokens(store, SID, 'spec-1')).toBe(MAX_LIFELINE_TOKENS);
   });
 
@@ -69,11 +73,56 @@ describe('lifelineTokens — grantToken (increment + cap)', () => {
       },
     });
     const result = await grantToken(store, SID, 'spec-1');
-    expect(result).toBe(1);
+    expect(result).toEqual({ count: 1, minted: true });
     const map = await store.getJSON<Record<string, number>>(lifelinesKey(SID));
     // spec-1 incremented from the re-read baseline (0 → 1); spec-2's concurrent
     // write (5) is preserved — the grant did not overwrite the whole map.
     expect(map).toEqual({ 'spec-1': 1, 'spec-2': 5 });
+  });
+});
+
+describe('lifelineTokens — corrupt stored values sanitize fail-closed (review 9.2)', () => {
+  // The map shares one key with every writer; a corrupt/foreign entry (string,
+  // negative, over-cap, NaN-as-null) must never propagate into arithmetic, an
+  // emit, or the client counter.
+  it('getTokens clamps a corrupt value: string/negative ⇒ 0, over-cap ⇒ cap', async () => {
+    const store = createMemoryRedisStore();
+    await store.setJSON(lifelinesKey(SID), {
+      str: 'x' as unknown as number,
+      neg: -5,
+      big: MAX_LIFELINE_TOKENS + 4,
+      frac: 1.5,
+    });
+    expect(await getTokens(store, SID, 'str')).toBe(0);
+    expect(await getTokens(store, SID, 'neg')).toBe(0);
+    expect(await getTokens(store, SID, 'big')).toBe(MAX_LIFELINE_TOKENS);
+    expect(await getTokens(store, SID, 'frac')).toBe(0);
+  });
+
+  it('grantToken heals a corrupt entry instead of committing NaN or a negative', async () => {
+    const store = createMemoryRedisStore();
+    await store.setJSON(lifelinesKey(SID), { str: 'x' as unknown as number, neg: -5 });
+    // 'x' sanitizes to 0 → grant commits 1 (never Math.min(cap, NaN) = NaN).
+    expect(await grantToken(store, SID, 'str')).toEqual({ count: 1, minted: true });
+    // -5 sanitizes to 0 → grant commits 1 (never -4).
+    expect(await grantToken(store, SID, 'neg')).toEqual({ count: 1, minted: true });
+    expect(await store.getJSON(lifelinesKey(SID))).toEqual({ str: 1, neg: 1 });
+  });
+
+  it('spendToken refuses on a corrupt entry (sanitizes to 0 — never spends into the negative)', async () => {
+    const store = createMemoryRedisStore();
+    await store.setJSON(lifelinesKey(SID), { str: 'x' as unknown as number, neg: -5 });
+    expect(await spendToken(store, SID, 'str')).toEqual({ ok: false, count: 0 });
+    expect(await spendToken(store, SID, 'neg')).toEqual({ ok: false, count: 0 });
+  });
+
+  it('grantToken clamps an over-cap corrupt entry back to the cap (minted: false)', async () => {
+    const store = createMemoryRedisStore();
+    await store.setJSON(lifelinesKey(SID), { big: MAX_LIFELINE_TOKENS + 4 });
+    expect(await grantToken(store, SID, 'big')).toEqual({
+      count: MAX_LIFELINE_TOKENS,
+      minted: false,
+    });
   });
 });
 

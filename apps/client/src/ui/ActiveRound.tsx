@@ -123,11 +123,15 @@ export default function ActiveRound() {
         <p className="font-mono text-sm uppercase tracking-widest text-ink-muted">
           {role === 'spectator' ? WATCHING_THE_BOMB_ROOM : ROUND_IN_PROGRESS}
         </p>
-        {/* Counter only for a genuine spectator (the Facilitator/ROUND_IN_PROGRESS
-            fallback never earns tokens). */}
-        {role === 'spectator' ? lifelineCounter : null}
-        {/* Story 9.3: send affordance — self-hides for the facilitator (0 tokens). */}
-        {role === 'spectator' ? <LifelinePanel /> : null}
+        {/* Counter for every non-facilitator on this fallback — the earner set
+            exactly (review 9.2): besides a genuine spectator, a TEAMLESS
+            defuser/expert (joined between rounds; TEAM_ASSIGN is lobby-locked)
+            lands here AND earns tokens, so hiding the counter from them would
+            mint an invisible balance. The facilitator never earns. */}
+        {role !== undefined && role !== 'facilitator' ? lifelineCounter : null}
+        {/* Story 9.3: send affordance — same earner predicate, so a teamless
+            earner can spend what they hold; self-hides at 0 tokens. */}
+        {role !== undefined && role !== 'facilitator' ? <LifelinePanel /> : null}
       </div>
     );
   }
