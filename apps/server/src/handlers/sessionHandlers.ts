@@ -1445,7 +1445,20 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
         // `deriveTeamSeed` still diverges per team (independent values). A retry
         // reuses the same `roundNumber`, so `pairIndexFor` returns the same value →
         // the identical bomb regenerates (Story 8.8 reused-seed guarantee intact).
-        const pairIndex = pairIndexFor(result.round.roundNumber);
+        //
+        // SINGLE-TEAM SESSION: there is no cross-team pair to match — the snake
+        // fallback arms the SAME team for both turns of a pair, and pair-keyed
+        // seeding would hand that team a byte-identical bomb (same templateSeed
+        // AND same deriveTeamSeed) two rounds running. Seed by the raw turn
+        // instead; a retry still reuses the same `roundNumber`, so the Story 8.8
+        // reused-seed guarantee is unaffected.
+        const populatedTeams = Object.values(result.state.teams).filter(
+          (team) => team.relayOrder.length > 0,
+        ).length;
+        const pairIndex =
+          populatedTeams >= 2
+            ? pairIndexFor(result.round.roundNumber)
+            : result.round.roundNumber;
 
         // Story 4.7 (closes the 8.2 seam): generate + persist every team's bomb
         // FIRST — before the session/round persist and before ANY broadcast.

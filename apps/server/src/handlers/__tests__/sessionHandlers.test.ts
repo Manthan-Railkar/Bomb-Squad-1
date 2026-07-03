@@ -1532,6 +1532,60 @@ describe('ROUND_START handler', () => {
     expect(round2.defusers.A).not.toBe(relayOrder[0]);
   });
 
+  it('single-team relay: round 2 gets a DIFFERENT bomb than round 1 (no pair-seed reuse)', async () => {
+    // Both players on Team A. Rounds 1 and 2 share pairIndex 1, and BOTH turns go
+    // to Team A (snake fallback) — pair-keyed seeding regenerated the byte-identical
+    // bomb after the role swap. Single-team sessions must seed by the raw turn.
+    const ack = await createSession(facilitator);
+    const j1 = await joinAs(maya, ack.joinCode, 'Maya');
+    const mayaId = idOf(j1, 'Maya');
+    const j2 = await joinAs(devon, ack.joinCode, 'Devon');
+    const devonId = idOf(j2, 'Devon');
+
+    const everyone = () =>
+      Promise.all([facilitator, maya, devon].map((s) => nextEvent<SessionState>(s, 'SESSION_STATE')));
+    let done = everyone();
+    facilitator.emit('TEAM_ASSIGN', { playerId: mayaId, teamId: 'A', role: 'defuser' });
+    await done;
+    done = everyone();
+    facilitator.emit('TEAM_ASSIGN', { playerId: devonId, teamId: 'A', role: 'expert' });
+    await done;
+
+    // ── Round 1: Maya defuses. Capture her bomb. ────────────────────────────────
+    done = everyone();
+    facilitator.emit('PREPARATION_OPEN');
+    await done;
+    const r1Bomb = new Promise<BombState>((res) => maya.once('BOMB_INIT', (b) => res(b as BombState)));
+    done = everyone();
+    facilitator.emit('ROUND_START');
+    await done;
+    const bombR1 = await r1Bomb;
+
+    // Flip into between-rounds with A's pointer advanced (as resolveRound leaves it).
+    const live = JSON.parse(store.data.get(sessionKey(ack.sessionId))!) as SessionState;
+    await store.setJSON(sessionKey(ack.sessionId), {
+      ...live,
+      status: 'between-rounds',
+      roundNumber: 1,
+      teams: {
+        ...live.teams,
+        A: { ...live.teams.A!, currentDefuserIndex: 1, cumulativeTimeMs: 9_000, roundTimesMs: [9_000] },
+      },
+    });
+
+    // ── Round 2: roles swap — Devon defuses. His bomb must NOT be round 1's. ────
+    done = everyone();
+    facilitator.emit('PREPARATION_OPEN');
+    await done;
+    const r2Bomb = new Promise<BombState>((res) => devon.once('BOMB_INIT', (b) => res(b as BombState)));
+    done = everyone();
+    facilitator.emit('ROUND_START');
+    await done;
+    const bombR2 = await r2Bomb;
+
+    expect(JSON.stringify(bombR2.modules)).not.toEqual(JSON.stringify(bombR1.modules));
+  });
+
   it('generates + persists a bomb ONLY for the active team and broadcasts BOMB_INIT to it (Model B)', async () => {
     const { sessionId } = await setupPrepared();
 
