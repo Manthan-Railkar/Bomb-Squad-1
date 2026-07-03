@@ -4,7 +4,17 @@
 # packages/shared (which exports its .ts source) resolve without a separate
 # shared compile step.  Node base satisfies engines: ">=20 <21".
 
-FROM node:20-alpine AS base
+# Debian (glibc), NOT alpine: @livekit/rtc-node's native FFI binding
+# (@livekit/rtc-ffi-bindings) ships only *-gnu variants — there is no musl build,
+# so the server's static import of the voice relay bot crashes at boot on alpine.
+# glibc resolves the linux-*-gnu binding so the server starts (voice deps load
+# even though the no-voice tunnel deploy never runs the LiveKit containers).
+FROM node:20-slim AS base
+# wget: the docker-compose healthcheck probes /health with wget. Alpine bundled
+# it via busybox; Debian slim does not ship it, so install it explicitly to keep
+# the existing healthcheck contract working.
+RUN apt-get update && apt-get install -y --no-install-recommends wget \
+  && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@10.30.1 --activate
 WORKDIR /app
 

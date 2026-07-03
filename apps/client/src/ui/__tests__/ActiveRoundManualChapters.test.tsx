@@ -36,7 +36,7 @@ vi.mock('../../manual/ManualViewer.js', () => ({
 vi.mock('../../manual/chapters.js', () => ({
   buildChapters: () => [{ chapterId: 'dev-demo' }, { chapterId: 'wires' }],
 }));
-vi.mock('../../modules/index.js', () => ({ SANDBOX_MODULES: [] }));
+vi.mock('../../modules/index.js', () => ({ SANDBOX_MODULES: [], MANUAL_MODULES: [] }));
 vi.mock('../ResolutionBanner.js', () => ({ default: () => null }));
 vi.mock('../PauseOverlay.js', () => ({ default: () => null }));
 vi.mock('../VoiceController.js', () => ({ default: () => null }));

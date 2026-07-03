@@ -20,6 +20,12 @@ RUN pnpm install --frozen-lockfile
 FROM deps AS build
 COPY packages/shared/ packages/shared/
 COPY apps/client/ apps/client/
+# Voice feature flag baked into the client bundle at build time. Defaults to
+# `true` so a normal build is unchanged; the no-voice tunnel deploy overrides it
+# to `false` (via docker-compose `build.args`), which hides the voice-connect UI.
+# Vite exposes VITE_-prefixed process.env vars to `import.meta.env`.
+ARG VITE_VOICE_ENABLED=true
+ENV VITE_VOICE_ENABLED=$VITE_VOICE_ENABLED
 RUN pnpm --filter @bomb-squad/client build
 
 # ── runtime: serve compiled dist via vite preview ────────────────────────────

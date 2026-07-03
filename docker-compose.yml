@@ -167,6 +167,10 @@ services:
     build:
       context: .
       dockerfile: apps/client/Dockerfile
+      args:
+        # No-voice tunnel deploy sets VITE_VOICE_ENABLED=false in .env; defaults
+        # to true (full-featured build) when unset.
+        VITE_VOICE_ENABLED: "${VITE_VOICE_ENABLED:-true}"
     restart: unless-stopped
     ports:
       - "5173:5173"

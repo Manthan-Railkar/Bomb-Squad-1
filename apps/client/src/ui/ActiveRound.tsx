@@ -1,15 +1,17 @@
 import { useMemo, type ReactNode } from 'react';
 import { CHAPTER_IDS } from '@bomb-squad/shared';
 import { useGameStore } from '../store/gameStore.js';
+import { useUiStore } from '../store/uiStore.js';
 import BombStage from '../scenes/BombStage.js';
 import BombScene from '../scenes/BombScene.js';
 import ManualViewer from '../manual/ManualViewer.js';
 import { buildChapters } from '../manual/chapters.js';
-import { SANDBOX_MODULES } from '../modules/index.js';
+import { MANUAL_MODULES } from '../modules/index.js';
 import ResolutionBanner from './ResolutionBanner.js';
 import LifelinePanel from './LifelinePanel.js';
 import LifelineToastHost from './LifelineToast.js';
 import VoiceController from './VoiceController.js';
+import { isVoiceEnabled } from '../voice/voiceEnabled.js';
 import PauseOverlay from './PauseOverlay.js';
 import SpeakerIndicator from './SpeakerIndicator.js';
 import MuteControl from './MuteControl.js';
@@ -43,10 +45,11 @@ export default function ActiveRound() {
   // Story 9.2: this spectator's standing lifeline-token balance. Read reactively
   // so the counter updates the instant a grant lands.
   const lifelineTokens = useGameStore((s) => s.lifelineTokens);
+  const manualLocale = useUiStore((s) => s.manualLocale);
 
   const chapters = useMemo(
-    () => buildChapters(SANDBOX_MODULES.flatMap((m) => m.getManualPages())),
-    [],
+    () => buildChapters(MANUAL_MODULES.flatMap((m) => m.getManualPages(manualLocale))),
+    [manualLocale],
   );
   // Drop the sandbox-only `dev-demo` chapter from BOTH manual paths (review
   // 9.1): if the unrestricted list kept dev-demo as chapter 1, every real
@@ -158,7 +161,7 @@ export default function ActiveRound() {
       <SpeakerIndicator />
       <MuteControl />
       <AudioUnblockPrompt />
-      <VoiceController />
+      {isVoiceEnabled() && <VoiceController />}
     </div>
   );
 }

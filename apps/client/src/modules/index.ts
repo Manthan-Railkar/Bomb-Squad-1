@@ -38,6 +38,17 @@ export const SANDBOX_MODULES: readonly SandboxModule[] = [
   MORSE_CODE_MODULE as SandboxModule,
 ];
 
+/**
+ * Modules shown in the PLAYER-facing Expert manual (Preparation + ActiveRound).
+ * Excludes `dev-demo` ("On the Subject of the Test Rig") — a reference module
+ * registered for the /dev sandbox but in NO tier pool, so it never appears on a
+ * real bomb and must not lead the player's handbook. The dev sandbox still uses
+ * the full SANDBOX_MODULES list.
+ */
+export const MANUAL_MODULES: readonly SandboxModule[] = SANDBOX_MODULES.filter(
+  (m) => m.id !== DEV_DEMO_MODULE.id,
+);
+
 export {
   DEV_DEMO_MODULE,
   WIRES_MODULE,

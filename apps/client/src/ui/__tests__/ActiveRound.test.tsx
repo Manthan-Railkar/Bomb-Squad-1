@@ -12,7 +12,7 @@ vi.mock('../../scenes/BombStage.js', () => ({
 vi.mock('../../scenes/BombScene.js', () => ({ default: () => <div data-testid="bomb-scene" /> }));
 vi.mock('../../manual/ManualViewer.js', () => ({ default: () => <div data-testid="manual" /> }));
 vi.mock('../../manual/chapters.js', () => ({ buildChapters: () => [] }));
-vi.mock('../../modules/index.js', () => ({ SANDBOX_MODULES: [] }));
+vi.mock('../../modules/index.js', () => ({ SANDBOX_MODULES: [], MANUAL_MODULES: [] }));
 vi.mock('../ResolutionBanner.js', () => ({ default: () => null }));
 vi.mock('../PauseOverlay.js', () => ({ default: () => null }));
 vi.mock('../VoiceController.js', () => ({ default: () => null }));

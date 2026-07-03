@@ -20,6 +20,7 @@ export type {
   ManualPage,
   ModuleState,
   IModule,
+  Locale,
 } from './module.js';
 export type {
   IndicatorLabel,
