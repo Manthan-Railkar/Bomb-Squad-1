@@ -1,6 +1,14 @@
 import type { BombContext } from './bomb.js';
 import type { Reducer } from './reducer.js';
 
+/**
+ * Supported manual languages. `'en'` is the authoritative source (all on-bomb
+ * literal tokens live in English); `'zh'` is a Simplified-Chinese translation of
+ * the PROSE only — table row values (words, symbols, labels the Defuser reads off
+ * the bomb) stay identical across locales so Defuser↔Expert communication holds.
+ */
+export type Locale = 'en' | 'zh';
+
 export interface ManualTable {
   headers: string[];
   rows: string[][];
@@ -69,8 +77,12 @@ export interface IModule<S = unknown, A = unknown> {
   /** Pure reducer for this module's actions. */
   reduce: Reducer<ModuleState<S>, A>;
 
-  /** Returns structured manual content. NOT raw HTML or untyped JSX. */
-  getManualPages(): ManualPage[];
+  /**
+   * Returns structured manual content. NOT raw HTML or untyped JSX.
+   * `locale` selects the language of the PROSE (default `'en'`); table row
+   * values are locale-invariant literal tokens.
+   */
+  getManualPages(locale?: Locale): ManualPage[];
 
   /** Optional needy-module lifecycle hook (V2). Default: no-op. */
   onTick?(state: ModuleState<S>, now: number): ModuleState<S>;

@@ -1,10 +1,11 @@
 import { useMemo, type ReactNode } from 'react';
 import { useGameStore } from '../store/gameStore.js';
+import { useUiStore } from '../store/uiStore.js';
 import BombStage from '../scenes/BombStage.js';
 import BombScene from '../scenes/BombScene.js';
 import ManualViewer from '../manual/ManualViewer.js';
 import { buildChapters } from '../manual/chapters.js';
-import { SANDBOX_MODULES } from '../modules/index.js';
+import { MANUAL_MODULES } from '../modules/index.js';
 import ResolutionBanner from './ResolutionBanner.js';
 import VoiceController from './VoiceController.js';
 import { isVoiceEnabled } from '../voice/voiceEnabled.js';
@@ -35,10 +36,11 @@ import { ROUND_IN_PROGRESS, WATCHING_THE_BOMB_ROOM, RESTING_SPECTATE } from './c
 export default function ActiveRound() {
   const session = useGameStore((s) => s.session);
   const selfId = useGameStore((s) => s.myPlayerId);
+  const manualLocale = useUiStore((s) => s.manualLocale);
 
   const chapters = useMemo(
-    () => buildChapters(SANDBOX_MODULES.flatMap((m) => m.getManualPages())),
-    [],
+    () => buildChapters(MANUAL_MODULES.flatMap((m) => m.getManualPages(manualLocale))),
+    [manualLocale],
   );
 
   if (session === null) return null;

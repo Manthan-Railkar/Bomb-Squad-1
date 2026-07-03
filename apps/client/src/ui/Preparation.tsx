@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ErrorPayload, TeamId } from '@bomb-squad/shared';
 import { useGameStore } from '../store/gameStore.js';
+import { useUiStore } from '../store/uiStore.js';
 import { getSocket } from '../net/socket.js';
 import ConfirmButton from './ConfirmButton.js';
 import Button from './Button.js';
 import ManualViewer from '../manual/ManualViewer.js';
 import { buildChapters } from '../manual/chapters.js';
-import { SANDBOX_MODULES } from '../modules/index.js';
+import { MANUAL_MODULES } from '../modules/index.js';
 import { upcomingDefuserId } from './rotation.js';
 import PrepBombView from './PrepBombView.js';
 import {
@@ -56,10 +57,12 @@ export default function Preparation() {
   const selfId = useGameStore((s) => s.myPlayerId);
   const [startError, setStartError] = useState<string | null>(null);
 
-  // getManualPages() is pure and the registry is import-time static — build once.
+  // getManualPages() is pure and the registry is import-time static — rebuild
+  // only when the manual language changes.
+  const manualLocale = useUiStore((s) => s.manualLocale);
   const chapters = useMemo(
-    () => buildChapters(SANDBOX_MODULES.flatMap((m) => m.getManualPages())),
-    [],
+    () => buildChapters(MANUAL_MODULES.flatMap((m) => m.getManualPages(manualLocale))),
+    [manualLocale],
   );
 
   // ROUND_START has no ack — rejections arrive as typed ERRORs. Only

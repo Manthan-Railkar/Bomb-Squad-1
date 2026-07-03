@@ -32,6 +32,8 @@ interface ManualViewerProps {
 
 export default function ManualViewer({ chapters }: ManualViewerProps) {
   const storedChapterId = useUiStore((s) => s.manualChapterId);
+  const manualLocale = useUiStore((s) => s.manualLocale);
+  const setManualLocale = useUiStore((s) => s.setManualLocale);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -154,6 +156,35 @@ export default function ManualViewer({ chapters }: ManualViewerProps) {
             Defusal Handbook
           </div>
           <div className="font-manual text-[26px] font-bold text-ink-primary">Chapters</div>
+
+          {/* Manual language selector (i18n). Switching re-selects the localized
+              pages upstream (buildChapters depends on manualLocale); chapter ids
+              are language-invariant, so the open chapter is preserved. */}
+          <div
+            className="mt-3.5 inline-flex gap-1 rounded-md border p-0.5"
+            role="group"
+            aria-label="Manual language"
+            style={{ borderColor: '#2A242F' }}
+          >
+            {(['en', 'zh'] as const).map((loc) => {
+              const active = manualLocale === loc;
+              return (
+                <button
+                  key={loc}
+                  type="button"
+                  onClick={() => setManualLocale(loc)}
+                  aria-pressed={active}
+                  className={`rounded-[3px] px-2.5 py-1 font-mono text-xs uppercase tracking-wider transition-colors ${
+                    active
+                      ? 'bg-surface-manual font-semibold text-ink-manual'
+                      : 'text-ink-muted hover:bg-white/5 hover:text-ink-primary'
+                  }`}
+                >
+                  {loc === 'en' ? 'EN' : '中文'}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <nav className="flex flex-1 flex-col gap-0.5" aria-label="Manual chapters">
