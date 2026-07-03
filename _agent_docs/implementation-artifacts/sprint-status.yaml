@@ -1,5 +1,5 @@
 # generated: 2026-06-10
-# last_updated: 2026-07-03 (td-9 dev; td-8 done)
+# last_updated: 2026-07-03 (td-7 dev)
 # project: Bomb Squad
 # project_key: NOKEY
 # tracking_system: file-system
@@ -55,7 +55,7 @@ development_status:
   epic-1-retrospective: done
 
   # ---- Epic 2: Lobby & Session Setup ----
-  epic-2: in-progress
+  epic-2: done
   2-1-design-tokens-ui-shell-and-state-patterns: done
   2-2-facilitator-hosts-a-session: done
   2-3-player-joins-via-code-and-picks-a-role: done
@@ -63,7 +63,7 @@ development_status:
   2-5-lobby-roster-ready-state-and-mic-check: done
   2-6-capacity-and-join-window-guards: done
   2-7-lobby-resilience-and-facilitator-player-controls: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   # ---- Epic 3: Voice Communication ----
   epic-3: in-progress
@@ -77,7 +77,7 @@ development_status:
   epic-3-retrospective: optional
 
   # ---- Epic 4: Bomb Renderer & HUD ----
-  epic-4: in-progress
+  epic-4: done
   4-1-3d-bomb-scene-and-camera-rig: done
   4-2-chassis-and-bomb-metadata-rendering: done
   4-3-module-slots-and-solve-leds: done
@@ -85,16 +85,16 @@ development_status:
   4-5-strike-indicator-and-strike-roll-up: done
   4-6-preparation-placeholder-bomb-view: done
   4-7-snapshot-sync-and-optimistic-render-at-60fps: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
   # ---- Epic 5: Core Modules — Easy (Walking Skeleton) ----
-  epic-5: in-progress
+  epic-5: done
   5-1-module-plugin-scaffold-sandbox-and-click-primitive: done
   5-2-expert-manual-viewer: done
   5-3-wires-module-walking-skeleton: done
   5-4-the-button-module: done
   5-5-passwords-module: done
-  epic-5-retrospective: optional
+  epic-5-retrospective: done
 
   # ---- Epic 6: Core Modules — Medium ----
   epic-6: done
@@ -110,7 +110,7 @@ development_status:
   7-2-simon-says-module: done
   7-3-memory-module: done
   7-4-morse-code-module: done
-  epic-7-retrospective: optional
+  epic-7-retrospective: done
 
   # ---- Epic 8: Game Loop & Scoring ----
   epic-8: done
@@ -125,7 +125,7 @@ development_status:
   8-9-relay-orchestration-and-odd-team-equalisation: done
   8-10-scoring-final-scoreboard-and-session-end-persistence: done
   8-11-sequential-round-orchestration: done
-  epic-8-retrospective: optional
+  epic-8-retrospective: done
 
   # ---- Epic 9: Advanced Features ----
   epic-9: backlog
@@ -152,6 +152,6 @@ development_status:
   td-5-player-simulator-test-harness: done
   td-6-playwright-client-e2e-harness: done
   # Sprint 6 retro (2026-07-02) action items → stories (2026-07-03)
-  td-7-e2e-module-solve-coverage: backlog          # AI-1: e2e solve/strike specs for the 5 uncovered modules (Mazes + Hard tier)
+  td-7-e2e-module-solve-coverage: in-progress      # AI-1: e2e solve/strike specs for the 5 uncovered modules (Mazes + Hard tier)
   td-8-module-defect-class-checklist: done         # AI-2: 3 recurring reducer defect classes → project-context module checklist (landed 2026-07-03, review waived by Jay; AC3 verified live on next module story)
   td-9-manualtable-presentation-rework: done       # AI-3: ManualTable alignment field + spacer removal + RED-tint opt-out (AC6 /dev/manual confirmed by Jay 2026-07-03; review waived by Jay)
