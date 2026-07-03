@@ -155,3 +155,4 @@ development_status:
   td-7-e2e-module-solve-coverage: done             # AI-1: all 11 modules covered; review 2026-07-03 closed — Jay ratified the scope extension, all 9 patches applied, 3× green pnpm e2e re-recorded
   td-8-module-defect-class-checklist: done         # AI-2: 3 recurring reducer defect classes → project-context module checklist (landed 2026-07-03, review waived by Jay; AC3 verified live on next module story)
   td-9-manualtable-presentation-rework: done       # AI-3: ManualTable alignment field + spacer removal + RED-tint opt-out (AC6 /dev/manual confirmed by Jay 2026-07-03; review waived by Jay)
+  td-10-vercel-2p-lite-merge-back: done            # retroactive summary of merge 90631b2: single-team bomb-seed fix + zh manual i18n + ngrok deploy path; worktree retired; interactive verification pending Jay
