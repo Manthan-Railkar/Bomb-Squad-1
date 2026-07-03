@@ -174,7 +174,8 @@ claude-opus-4-8 (gds-dev-story)
 - Grant is race-safe (CAS `updateJSON` on the single shared `lifelines` map), fail-safe (runs after the authoritative broadcast, never a resolution failure), idempotent-per-round (`enteringBetweenRounds` fence + `!round.retry`), cap-clamped at 3, and fail-closed (unknown/absent playerId ⇒ 0).
 - **Resolved a 9.1-review carry-over finding** (`deferred-work.md`): the grant loop originally wrapped grant+deliver in ONE try/catch, so a single `grantToken` throw mid-loop stranded the remaining earners and mislabelled a partial success as "no tokens." Hardened to **per-earner** grant resilience (one earner's Redis hiccup never aborts the rest) + a **separate** delivery try/catch, and the info log now reports `granted: counts.size` (tokens actually persisted, never overstated). New `resolveRoundLifelines` test covers the partial-failure case (fail earner #2 → earner #1 still granted + notified).
 - Token counts are NEVER on `SESSION_STATE` — delivered targeted per-earner via `fetchSockets()` (mirrors Story 9.1). Reconnect re-hydrates each player's own count (even 0) when the modifier is on.
-- **Human verification (Jay) still PENDING** — interactive Docker-stack check of the counter (shows 1 → caps at 3 → hidden when off → re-hydrates on reload) is not yet recorded. Not fully done until Jay confirms. [[human-verification-ac-rule]]
+- **Automated the human-verification checklist as a real-browser e2e** (`spectator-lifeline-token-economy.spec.ts`, `pnpm e2e`, 2 passed / 20.4s): a genuine Spectator watching a single-team-A relay earns 1 token per completed round (counter 0→1→2→3), the count CAPS at 3 (a 4th completed round's grant clamps → round 5 still shows 3), the counter re-hydrates after a mid-round reload, and with the modifier OFF no counter renders. Drives the REAL server grant + `LIFELINE_TOKENS` socket delivery through the real BombScene canvas (no bots).
+- **Interactive human verification (Jay) still PENDING** — the e2e covers the same checks automatically, but per [[human-verification-ac-rule]] Jay's own observed Docker-stack result is not yet recorded. Not fully done until Jay confirms (or accepts the e2e as sufficient).
 
 ### File List
 
@@ -186,6 +187,7 @@ claude-opus-4-8 (gds-dev-story)
 - `apps/server/src/round/__tests__/resolveRoundLifelines.test.ts` — grant integration tests.
 - `apps/client/src/store/__tests__/lifelineTokens.test.ts` — store slice tests.
 - `apps/client/src/ui/__tests__/ActiveRoundLifelines.test.tsx` — counter render tests.
+- `apps/client/e2e/flows/spectator-lifeline-token-economy.spec.ts` — real-browser e2e automating the human-verification checklist (earn 1/round → cap 3 → reload re-hydrate → modifier-off hidden). Both tests green (`pnpm e2e`, 20.4s).
 
 **Modified:**
 - `packages/shared/src/events/payloads.ts` — `LifelineTokensPayload`.
