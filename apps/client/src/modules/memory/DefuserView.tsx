@@ -122,6 +122,8 @@ export function MemoryDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
         return (
           <group
             key={i}
+            // name = e2e projection target (TD-7); module-scoped position 1..4, render-only.
+            name={`m${moduleIndex}-mem-btn-${position}`}
             ref={(g) => {
               groups.current[i] = g;
             }}

@@ -101,8 +101,8 @@ export function ButtonDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
   return (
     <group>
       {/* The button: a coloured cap on a graphite housing. The whole group is
-          the press/hold target. */}
-      <group {...handlers}>
+          the press/hold target. name = e2e projection target (TD-7), render-only. */}
+      <group name={`m${moduleIndex}-button`} {...handlers}>
         {/* Housing collar */}
         <mesh position={[0, 0, 0.01]} rotation={[Math.PI / 2, 0, 0]}>
           <cylinderGeometry args={[BUTTON_RADIUS + 0.03, BUTTON_RADIUS + 0.03, 0.04, 24]} />

@@ -1,5 +1,5 @@
 # generated: 2026-06-10
-# last_updated: 2026-07-03 (td-7 dev)
+# last_updated: 2026-07-03 (td-7 review closed → done)
 # project: Bomb Squad
 # project_key: NOKEY
 # tracking_system: file-system
@@ -128,8 +128,8 @@ development_status:
   epic-8-retrospective: done
 
   # ---- Epic 9: Advanced Features ----
-  epic-9: backlog
-  9-1-asymmetric-expert-roles: backlog
+  epic-9: in-progress                                # first story (9-1) created 2026-07-03 → epic in-progress
+  9-1-asymmetric-expert-roles: ready-for-dev         # story file created 2026-07-03 (gds-create-story)
   9-2-spectator-lifeline-token-economy: backlog
   9-3-send-a-lifeline-hint: backlog
   9-4-spectator-lounge-view: backlog
@@ -152,6 +152,6 @@ development_status:
   td-5-player-simulator-test-harness: done
   td-6-playwright-client-e2e-harness: done
   # Sprint 6 retro (2026-07-02) action items → stories (2026-07-03)
-  td-7-e2e-module-solve-coverage: in-progress      # AI-1: e2e solve/strike specs for the 5 uncovered modules (Mazes + Hard tier)
+  td-7-e2e-module-solve-coverage: done             # AI-1: all 11 modules covered; review 2026-07-03 closed — Jay ratified the scope extension, all 9 patches applied, 3× green pnpm e2e re-recorded
   td-8-module-defect-class-checklist: done         # AI-2: 3 recurring reducer defect classes → project-context module checklist (landed 2026-07-03, review waived by Jay; AC3 verified live on next module story)
   td-9-manualtable-presentation-rework: done       # AI-3: ManualTable alignment field + spacer removal + RED-tint opt-out (AC6 /dev/manual confirmed by Jay 2026-07-03; review waived by Jay)

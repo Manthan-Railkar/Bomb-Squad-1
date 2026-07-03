@@ -137,7 +137,13 @@ export function MazesDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
 
       {/* Four arrow buttons — single click each → MOVE. */}
       {ARROWS.map(([direction, ax, ay, glyph]) => (
-        <group key={direction} position={[ax, ay, 0.02]} {...move(direction)}>
+        // name = e2e projection target (TD-6/TD-7); module-scoped, render-only.
+        <group
+          key={direction}
+          name={`m${moduleIndex}-maze-nav-${direction}`}
+          position={[ax, ay, 0.02]}
+          {...move(direction)}
+        >
           <mesh>
             <boxGeometry args={[0.09, 0.09, 0.03]} />
             <meshStandardMaterial color={ARROW_CAP} />

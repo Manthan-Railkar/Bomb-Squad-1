@@ -71,6 +71,41 @@ needed (WSL2/CI). **A blank canvas is a failure, not a reason to skip.**
   (TD-5 keystone); a spec that needs an answer recomputes it the way a human
   Defuser reading the manual would.
 
+## Module coverage
+
+Every shipped module has a seeded `/dev/sandbox` solve-and-strike spec (TD-6
+built the harness + the first four; TD-7 closed the gap on the rest). Each pins a
+fixed seed, derives the correct interaction from the **public** snapshot via the
+module's shared solve fn (never a baked answer), drives it through real canvas
+clicks (`clickMesh`), and asserts both the solved state **and** at least one
+module-specific strike/recovery surface.
+
+| Module | Tier | Spec | Strike/recovery surface asserted |
+| --- | --- | --- | --- |
+| wires | Easy | `wires.spec.ts` | wrong cut strikes |
+| the-button | Easy | `the-button.spec.ts` | hold released on the wrong timer digit strikes (frozen-clock control) |
+| passwords | Easy | `passwords.spec.ts` | wrong SUBMIT strikes, columns untouched |
+| keypads | Medium | `keypads.spec.ts` | wrong press strikes, progress retained |
+| whos-on-first | Medium | `whos-on-first.spec.ts` | wrong button strikes |
+| wire-sequences | Medium | `wire-sequences.spec.ts` | wrong cut strikes and stays severed |
+| mazes | Medium | `mazes.spec.ts` | off-grid **and** interior-wall moves strike, light held |
+| complicated-wires | Hard | `complicated-wires.spec.ts` | wrong cut strikes, others stay cuttable |
+| simon-says | Hard | `simon-says.spec.ts` | wrong press restarts the stage; the strike shifts the translation table (live strike count) |
+| memory | Hard | `memory.spec.ts` | wrong press resets the module to stage 1 |
+| morse-code | Hard | `morse-code.spec.ts` | wrong TX strikes, dial preserved |
+
+**Flashing modules** (simon-says, morse-code) do NOT watch pixels: the flash
+sequence / word is already in the public snapshot (`sequence` / `word`), so the
+spec derives the answer from state and every wait is a store predicate — the
+lamp animation is irrelevant.
+
+**Standing rule — ship a module, ship its spec.** When you add a module, add
+`e2e/modules/<id>.spec.ts` alongside its reducer/generator/DefuserView, following
+the pattern above: fixed seed → shared solve fn → `clickMesh` → assert solve +
+one strike/recovery. If an interactive mesh has no stable identity yet, give it a
+render-only `name={`m${moduleIndex}-<module>-<part>`}` (never game logic). This
+table must stay complete — a shipped module without a row is a coverage gap.
+
 ## Flake policy
 
 `retries: 1` locally, trace on the retry. If a spec needed the retry, **fix the

@@ -135,7 +135,8 @@ export function ComplicatedWiresDefuserView({ moduleIndex }: ModuleDefuserViewPr
               />
             </mesh>
 
-            <group position={[WIRE_X, 0, 0]} {...cut}>
+            {/* name = e2e projection target (TD-7); module-scoped, render-only. */}
+            <group name={`m${moduleIndex}-cwire-${wireIndex}`} position={[WIRE_X, 0, 0]} {...cut}>
               {severed ? (
                 <>
                   <mesh position={[-WIRE_LENGTH / 4, -0.01, 0]} rotation={[0, 0, Math.PI / 2 - 0.25]}>

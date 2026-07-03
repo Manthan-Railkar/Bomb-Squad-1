@@ -190,8 +190,8 @@ export function MorseCodeDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
         {formatMorseFrequency(MORSE_FREQUENCIES[data.freqIndex])}
       </Text>
 
-      {/* Dial down / up controls. */}
-      <group position={[-0.16, -0.18, BASE_Z]} {...downHandlers}>
+      {/* Dial down / up controls. name = e2e projection target (TD-7), render-only. */}
+      <group name={`m${moduleIndex}-morse-down`} position={[-0.16, -0.18, BASE_Z]} {...downHandlers}>
         <mesh>
           <boxGeometry args={[0.12, 0.12, 0.03]} />
           <meshStandardMaterial color={BTN_COLOR} emissive={BTN_COLOR} emissiveIntensity={0.05} />
@@ -200,7 +200,7 @@ export function MorseCodeDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
           {'▼'}
         </Text>
       </group>
-      <group position={[0.16, -0.18, BASE_Z]} {...upHandlers}>
+      <group name={`m${moduleIndex}-morse-up`} position={[0.16, -0.18, BASE_Z]} {...upHandlers}>
         <mesh>
           <boxGeometry args={[0.12, 0.12, 0.03]} />
           <meshStandardMaterial color={BTN_COLOR} emissive={BTN_COLOR} emissiveIntensity={0.05} />
@@ -210,8 +210,8 @@ export function MorseCodeDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
         </Text>
       </group>
 
-      {/* TX transmit button. */}
-      <group position={[0, -0.18, BASE_Z]} {...txHandlers}>
+      {/* TX transmit button. name = e2e projection target (TD-7), render-only. */}
+      <group name={`m${moduleIndex}-morse-tx`} position={[0, -0.18, BASE_Z]} {...txHandlers}>
         <mesh>
           <boxGeometry args={[0.14, 0.12, 0.03]} />
           <meshStandardMaterial color="#C0392B" emissive="#C0392B" emissiveIntensity={0.12} />

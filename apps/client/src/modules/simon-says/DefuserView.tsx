@@ -175,6 +175,8 @@ export function SimonSaysDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
         return (
           <group
             key={color}
+            // name = e2e projection target (TD-7); module-scoped, render-only.
+            name={`m${moduleIndex}-simon-${color}`}
             ref={(g) => {
               groups.current[color] = g;
             }}

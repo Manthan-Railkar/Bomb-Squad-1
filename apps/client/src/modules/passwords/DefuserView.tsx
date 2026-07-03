@@ -74,8 +74,8 @@ export function PasswordsDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
         );
         return (
           <group key={columnIndex} position={[x, 0, 0.02]}>
-            {/* Up arrow */}
-            <group position={[0, ARROW_UP_Y, 0]} {...up}>
+            {/* Up arrow. name = e2e projection target (TD-7), render-only. */}
+            <group name={`m${moduleIndex}-pass-up-${columnIndex}`} position={[0, ARROW_UP_Y, 0]} {...up}>
               <mesh>
                 <boxGeometry args={[0.09, 0.06, 0.02]} />
                 <meshStandardMaterial color={SLOT} />
@@ -101,8 +101,8 @@ export function PasswordsDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
               {letter.toUpperCase()}
             </Text>
 
-            {/* Down arrow */}
-            <group position={[0, ARROW_DOWN_Y, 0]} {...down}>
+            {/* Down arrow. name = e2e projection target (TD-7), render-only. */}
+            <group name={`m${moduleIndex}-pass-down-${columnIndex}`} position={[0, ARROW_DOWN_Y, 0]} {...down}>
               <mesh>
                 <boxGeometry args={[0.09, 0.06, 0.02]} />
                 <meshStandardMaterial color={SLOT} />
@@ -115,8 +115,8 @@ export function PasswordsDefuserView({ moduleIndex }: ModuleDefuserViewProps) {
         );
       })}
 
-      {/* SUBMIT — one click validates the shown word. */}
-      <group position={[0, SUBMIT_Y, 0.02]} {...submit}>
+      {/* SUBMIT — one click validates the shown word. name = e2e target (TD-7), render-only. */}
+      <group name={`m${moduleIndex}-pass-submit`} position={[0, SUBMIT_Y, 0.02]} {...submit}>
         <mesh>
           <boxGeometry args={[0.26, 0.08, 0.02]} />
           <meshStandardMaterial color={SUBMIT_FACE} />
