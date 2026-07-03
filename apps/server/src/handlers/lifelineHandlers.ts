@@ -87,6 +87,14 @@ export function registerLifelineHandlers(io: LifelineIOServer, deps: LifelineHan
         // Modifier gate (AC-1): lifelines off ⇒ no send surface at all.
         if (!state.config.modifiers.spectatorLifelines) return;
 
+        // Phase gate (review 9.3): hints target a LIVE, running Bomb Room only.
+        // `activeTeamId` is set at preparation-open and deliberately SURVIVES round
+        // resolution, so without this a scripted client could burn a token into
+        // the scoreboard/prep screen (the UI hides the affordance in those phases,
+        // but the server is the authority). Paused rounds are also refused — the
+        // 8s toast timer runs client-side regardless of the freeze.
+        if (state.status !== 'active' || state.pausedAt !== null) return;
+
         // Actor gate: the sender must be an eligible WATCHER — the same earner
         // predicate as Story 9.2 (a non-Facilitator NOT on the active team). A
         // player on the active team or the Facilitator has no lifeline surface;
@@ -111,9 +119,11 @@ export function registerLifelineHandlers(io: LifelineIOServer, deps: LifelineHan
 
         // Persist-then-emit. The team room IS the Bomb Room (Defuser + Experts of
         // the active team); the sender and Facilitator are NOT in it, so the
-        // sender never sees their own toast. Never leak the playerId — fall back
-        // to a generic name if the display name is somehow absent.
-        const fromName = player.displayName || 'A spectator';
+        // sender never sees their own toast. Never leak the playerId — a (should-
+        // be-impossible) empty display name rides the wire as '' and the client
+        // copy composes the generic "A spectator sent a tip" (review 9.3: a
+        // server-side generic fallback composed as "Spectator A spectator ...").
+        const fromName = player.displayName ?? '';
         io.to(teamRoom(sessionId, activeTeamId)).emit('LIFELINE_TOAST', {
           promptId: parsed.promptId,
           fromName,

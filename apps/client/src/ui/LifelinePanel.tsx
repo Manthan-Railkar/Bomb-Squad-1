@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { LIFELINE_PROMPTS } from '@bomb-squad/shared';
+import { useEffect, useState } from 'react';
+import { LIFELINE_PROMPTS, type LifelinePromptId } from '@bomb-squad/shared';
 import { useGameStore } from '../store/gameStore.js';
 import { sendLifeline } from '../net/sendLifeline.js';
 import Button from './Button.js';
@@ -30,12 +30,23 @@ import {
 export default function LifelinePanel() {
   const modifierOn = useGameStore((s) => s.session?.config.modifiers.spectatorLifelines ?? false);
   const tokens = useGameStore((s) => s.lifelineTokens);
-  const [step, setStep] = useState<{ kind: 'closed' } | { kind: 'list' } | { kind: 'confirm'; promptId: string }>(
-    { kind: 'closed' },
-  );
+  const [step, setStep] = useState<
+    { kind: 'closed' } | { kind: 'list' } | { kind: 'confirm'; promptId: LifelinePromptId }
+  >({ kind: 'closed' });
 
   // AC-1: hidden unless the modifier is on AND the viewer has a token to spend.
-  if (!modifierOn || tokens < 1) return null;
+  const visible = modifierOn && tokens >= 1;
+
+  // Reset the flow whenever the panel self-hides (review 9.3): the component stays
+  // mounted while hidden, so without this a spectator parked on the CONFIRM step
+  // when the modifier flips off (or their balance re-hydrates to 0) would resurface
+  // — possibly a round later — one click from sending a minutes-old prompt,
+  // skipping the AC-1 pick-then-confirm flow.
+  useEffect(() => {
+    if (!visible) setStep({ kind: 'closed' });
+  }, [visible]);
+
+  if (!visible) return null;
 
   if (step.kind === 'closed') {
     return (
@@ -75,14 +86,10 @@ export default function LifelinePanel() {
     );
   }
 
-  // confirm step — resolve the chosen prompt's text from the shared list.
-  const chosen = LIFELINE_PROMPTS.find((p) => p.id === step.promptId);
-  // Defensive: a step referencing an id not in the list falls back to the picker
-  // (fail-closed — never send an unknown id).
-  if (chosen === undefined) {
-    setStep({ kind: 'list' });
-    return null;
-  }
+  // confirm step — resolve the chosen prompt's text from the shared list. The id
+  // is typed LifelinePromptId (always taken from LIFELINE_PROMPTS), so the lookup
+  // cannot miss; the non-null assertion documents that invariant.
+  const chosen = LIFELINE_PROMPTS.find((p) => p.id === step.promptId)!;
   return (
     <div data-testid="lifeline-panel" className="mt-4 flex flex-col items-center gap-2">
       <p className="max-w-xs text-center font-mono text-sm text-ink-primary">{chosen.text}</p>

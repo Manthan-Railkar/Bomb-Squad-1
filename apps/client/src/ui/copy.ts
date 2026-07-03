@@ -222,10 +222,14 @@ export const LIFELINE_PANEL_CANCEL = 'Cancel';
 export const LIFELINE_SEND_CONFIRM = 'Send tip';
 /** Confirm-step line; `nAfter` = the sender's balance AFTER this send (current − 1). */
 export const LIFELINE_CONFIRM_LINE = (nAfter: number): string =>
-  `Send this tip? You have ${nAfter} tokens after.`;
-/** Bomb-Room toast copy. Text is resolved from the shared prompt list, never the wire. */
+  `Send this tip? You have ${nAfter} ${nAfter === 1 ? 'token' : 'tokens'} after.`;
+/** Bomb-Room toast copy. Text is resolved from the shared prompt list, never the
+ * wire. An empty `fromName` (anomalous — the server passes the display name
+ * through) composes the generic line instead of "Spectator  sent a tip". */
 export const LIFELINE_TOAST_TEXT = (fromName: string, tip: string): string =>
-  `Spectator ${fromName} sent a tip: ${tip}`;
+  fromName === ''
+    ? `A spectator sent a tip: ${tip}`
+    : `Spectator ${fromName} sent a tip: ${tip}`;
 export const MODULE_POOL_LABEL = 'Module pool';
 export const MODULE_POOL_SUB = 'Tap to include or exclude. Greyed modules arrive in a later release.';
 export const MODULE_POOL_COMING_SOON = 'coming soon';

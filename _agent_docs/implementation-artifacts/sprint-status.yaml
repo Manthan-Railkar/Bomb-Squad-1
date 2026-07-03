@@ -1,5 +1,5 @@
 # generated: 2026-06-10
-# last_updated: 2026-07-03 (td-7 review closed → done)
+# last_updated: 2026-07-03 (9-3 code review: 0 AC violations, 1 decision + 9 patches applied; stays review pending Jay)
 # project: Bomb Squad
 # project_key: NOKEY
 # tracking_system: file-system
@@ -131,7 +131,7 @@ development_status:
   epic-9: in-progress                                # first story (9-1) created 2026-07-03 → epic in-progress
   9-1-asymmetric-expert-roles: review                # code review PASSED 2026-07-03 (3-layer adversarial): all 4 ACs satisfied; 7 patches applied per Jay's decisions (chapter-level shuffle, reattach-race hardening, empty-assignment fail-safe, stable numbering, teamless standby, PLAYER_REMOVE fail-open, leak test) + 10 tests; shared 504/server 595/client 491/e2e 24 green; ONLY human verification (Jay) pending → then done
   9-2-spectator-lifeline-token-economy: review        # code review 2026-07-03: ALL 4 ACs SATISFIED, 0 violations; all 9 patches APPLIED post-9.3-commit on Jay's instruction (MAJOR off→on counter-desync fix = unconditional+chained reattach emit + ROUND_CONFIGURE re-delivery; sanitizeCount; minted-reporting; test hardening; teamless-earner counter per AFK-default Decision 1). E2E note: mid-session modifier toggle is UI-unreachable (config panel Lobby-only) — desync fix unit-pinned, e2e documented add-when-UI-ships. typecheck clean; shared 509/server 619/client 511/e2e 24 green. Jay CONFIRMED both AFK-default decisions ("keep it"); ONLY interactive verification pending → then done
-  9-3-send-a-lifeline-hint: review               # story file created 2026-07-03 (gds-create-story) — consumer of dormant LIFELINE_SEND/TOAST; fixed prompt list + spend handler + first client toast. Depends on 9-2
+  9-3-send-a-lifeline-hint: review               # code review 2026-07-03 (3-layer adversarial, commit ef59070): ALL 4 ACs SATISFIED, 0 violations; 1 decision + 9 patches APPLIED same day — MAJOR round-phase gate (LIFELINE_SEND now refused outside active+unpaused round; AFK-default, Jay to re-confirm pause posture) + stale-toast clear on new round, stale-confirm reset, fail-closed store push, LifelinePromptId literal union, copy fixes (pluralize, fallback compose), resting-sender + phase-gate + sendLifeline tests, eventWithin leak fix. 4 defers → deferred-work.md (TOCTOU snapshot, per-socket echo, echo-ordering race, prompt version skew). typecheck clean; shared 509/server 624/client 520/e2e 24 green. PENDING: Jay's interactive verification (Task 6) + pause-posture confirm → then done
   9-4-spectator-lounge-view: backlog
   epic-9-retrospective: optional
 

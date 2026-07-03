@@ -1,3 +1,4 @@
+import type { LifelinePromptId } from '@bomb-squad/shared';
 import { useGameStore } from '../store/gameStore.js';
 import { getSocket } from './socket.js';
 
@@ -12,7 +13,7 @@ import { getSocket } from './socket.js';
  * token count: the balance drops only when the server's LIFELINE_TOKENS echo lands
  * (trust the server, single source of truth).
  */
-export function sendLifeline(promptId: string): void {
+export function sendLifeline(promptId: LifelinePromptId): void {
   const { connection, session } = useGameStore.getState();
   if (connection !== 'connected' || session === null) return;
   getSocket().emit('LIFELINE_SEND', { promptId });

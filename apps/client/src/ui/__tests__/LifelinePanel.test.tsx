@@ -65,6 +65,34 @@ describe('LifelinePanel (Story 9.3)', () => {
     );
   });
 
+  it('the confirm line pluralizes — "1 token", not "1 tokens" (review 9.3)', () => {
+    seed({ spectatorLifelines: true, tokens: 2 });
+    render(<LifelinePanel />);
+    fireEvent.click(screen.getByTestId('lifeline-send-cta'));
+    fireEvent.click(screen.getByTestId('lifeline-prompt-check-serial'));
+    expect(screen.getByTestId('lifeline-confirm-line')).toHaveTextContent(
+      'Send this tip? You have 1 token after.',
+    );
+  });
+
+  it('a stale confirm step does NOT resurface after the panel self-hides and re-shows (review 9.3)', () => {
+    seed({ spectatorLifelines: true, tokens: 1 });
+    const { rerender } = render(<LifelinePanel />);
+    fireEvent.click(screen.getByTestId('lifeline-send-cta'));
+    fireEvent.click(screen.getByTestId('lifeline-prompt-on-track'));
+    expect(screen.getByTestId('lifeline-confirm')).toBeInTheDocument(); // parked on confirm
+    // Balance re-hydrates to 0 (or the modifier flips off) → panel self-hides…
+    useGameStore.setState({ lifelineTokens: 0 });
+    rerender(<LifelinePanel />);
+    expect(screen.queryByTestId('lifeline-panel')).not.toBeInTheDocument();
+    // …and a later grant re-shows it at the CTA, not one click from a stale send.
+    useGameStore.setState({ lifelineTokens: 1 });
+    rerender(<LifelinePanel />);
+    expect(screen.getByTestId('lifeline-send-cta')).toBeInTheDocument();
+    expect(screen.queryByTestId('lifeline-confirm')).not.toBeInTheDocument();
+    expect(sendLifeline).not.toHaveBeenCalled();
+  });
+
   it('confirming emits the typed LIFELINE_SEND { promptId } and returns to closed', () => {
     seed({ spectatorLifelines: true, tokens: 1 });
     render(<LifelinePanel />);

@@ -51,7 +51,11 @@ describe('LifelineToastHost (Story 9.3)', () => {
   it('an unknown promptId fails closed — renders nothing (host present but no item)', () => {
     render(<LifelineToastHost />);
     act(() => {
-      useGameStore.getState().pushLifelineToast({ promptId: 'not-a-prompt', fromName: 'Sam' });
+      // pushLifelineToast now refuses unknown ids at the store boundary (review
+      // 9.3), so inject directly to exercise the RENDER-level defense in depth.
+      useGameStore.setState({
+        lifelineToasts: [{ id: 'lt-1', promptId: 'not-a-prompt', fromName: 'Sam' }],
+      });
     });
     expect(screen.queryByTestId('lifeline-toast')).not.toBeInTheDocument();
   });

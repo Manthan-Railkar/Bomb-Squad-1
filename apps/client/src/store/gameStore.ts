@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { isLifelinePromptId } from '@bomb-squad/shared';
 import type {
   SessionState,
   BombState,
@@ -160,8 +161,12 @@ export const useGameStore = create<GameState>((set) => ({
   // the stale between-rounds scoreboard so neither bleeds into the next round.
   // Also clear the Story 9.1 chapter restriction: the assignment event (if the
   // new round restricts) arrives right after BOMB_INIT and re-sets it, so an
-  // unrestricted round is left with full manual access (null).
-  setBomb: (bomb) => set({ bomb, resolution: null, scoreboard: null, assignedChapterIds: null }),
+  // unrestricted round is left with full manual access (null). Lifeline toasts
+  // are cleared too (review 9.3): their 8s timer starts at MOUNT, so a toast
+  // that landed while ActiveRound was unmounted (round-end race) would otherwise
+  // linger in the queue and pop up, minutes stale, when the next round mounts.
+  setBomb: (bomb) =>
+    set({ bomb, resolution: null, scoreboard: null, assignedChapterIds: null, lifelineToasts: [] }),
   setTimer: (timer) => set({ timer }),
   setResolution: (resolution) => set({ resolution }),
   setScoreboard: (scoreboard) => set({ scoreboard }),
@@ -204,9 +209,17 @@ export const useGameStore = create<GameState>((set) => ({
   // Enqueue a toast with a DETERMINISTIC id from the monotonic seq (never
   // Math.random/Date.now — project rule). Capped at MAX_LIFELINE_TOASTS: on
   // overflow the oldest is dropped (max-3-visible, EXPERIENCE.md) and logged — a
-  // silent drop would read as "delivered" when it wasn't.
+  // silent drop would read as "delivered" when it wasn't. Fail-CLOSED on an
+  // unknown promptId (review 9.3): a queued unknown id would render nothing yet
+  // occupy one of the 3 visible slots — and could evict a REAL toast via
+  // drop-oldest. Refuse it at the boundary instead (the server validates before
+  // emitting, so this only fires on version skew or a hostile payload).
   pushLifelineToast: ({ promptId, fromName }) =>
     set((s) => {
+      if (!isLifelinePromptId(promptId)) {
+        console.warn('[gameStore] lifeline toast dropped: unknown promptId', { promptId });
+        return {};
+      }
       const seq = s.lifelineToastSeq + 1;
       const next = [...s.lifelineToasts, { id: `lt-${seq}`, promptId, fromName }];
       if (next.length > MAX_LIFELINE_TOASTS) {

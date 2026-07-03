@@ -31,13 +31,21 @@ export interface LifelinePrompt {
  * The fixed, ordered prompt list. ≤8 entries (currently 5 — the GDD set).
  * `readonly` so no consumer can mutate the shared source of truth at runtime.
  */
-export const LIFELINE_PROMPTS: readonly LifelinePrompt[] = [
+export const LIFELINE_PROMPTS = [
   { id: 're-read-section', text: "Re-read the current module's section" },
   { id: 'check-serial', text: 'Check the serial number' },
   { id: 'missed-condition', text: 'You missed a condition' },
   { id: 'on-track', text: "You're on the right track" },
   { id: 'wrong-approach', text: 'Wrong approach' },
-] as const;
+] as const satisfies readonly LifelinePrompt[];
+
+/**
+ * The literal union of every valid prompt id. Client call sites (the picker,
+ * `sendLifeline`) type against this so a typo'd id fails at COMPILE time instead
+ * of as a silent server rejection. The wire payload stays `string` — incoming
+ * ids are untrusted and validated at runtime via {@link isLifelinePromptId}.
+ */
+export type LifelinePromptId = (typeof LIFELINE_PROMPTS)[number]['id'];
 
 /**
  * O(1) fail-closed validation set of every valid `promptId`. The server checks

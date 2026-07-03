@@ -41,11 +41,17 @@ function nextEvent<T>(socket: TestClientSocket, event: string): Promise<T> {
 /** Resolves true if the event fires within ms, false otherwise (absence assert). */
 function eventWithin(socket: TestClientSocket, event: string, ms: number): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
-    const timer = setTimeout(() => resolve(false), ms);
-    socket.once(event as 'LIFELINE_TOAST', (() => {
+    const onEvent = (() => {
       clearTimeout(timer);
       resolve(true);
-    }) as never);
+    }) as never;
+    const timer = setTimeout(() => {
+      // Remove the listener on timeout (review 9.3) — a leaked `once` would
+      // swallow the next same-named event later in the same test.
+      socket.off(event as 'LIFELINE_TOAST', onEvent);
+      resolve(false);
+    }, ms);
+    socket.once(event as 'LIFELINE_TOAST', onEvent);
   });
 }
 
@@ -255,6 +261,47 @@ describe('LIFELINE_SEND handler', () => {
     expect(await mayaToastSeen).toBe(false);
     const map = await store.getJSON<Record<string, number>>(lifelinesKey(sessionId));
     expect(map).toEqual({ [samId]: 1 }); // untouched
+  });
+
+  it('a RESTING-TEAM player is an eligible sender — toast to the active Bomb Room + echo (review 9.3)', async () => {
+    // The earner predicate admits any non-Facilitator NOT on the active team —
+    // including a benched Team-B player, the one eligible class the client's
+    // resting branch explicitly mounts the panel for. Sam joined teamless; park
+    // him on Team B in the stored state (the handler reads fresh Redis state, and
+    // room membership is irrelevant for a SENDER — only recipients need the room).
+    const { sessionId, samId } = await activeRound({ samTokens: 1 });
+    const state = (await store.getJSON<SessionState>(sessionKey(sessionId)))!;
+    state.players[samId].teamId = 'B';
+    await store.setJSON(sessionKey(sessionId), state);
+
+    const mayaToast = nextEvent<LifelineToastPayload>(maya, 'LIFELINE_TOAST');
+    const samEcho = nextEvent<LifelineTokensPayload>(sam, 'LIFELINE_TOKENS');
+    sam.emit('LIFELINE_SEND', { promptId: VALID_PROMPT });
+
+    expect(await mayaToast).toEqual({ promptId: VALID_PROMPT, fromName: 'Sam' });
+    expect(await samEcho).toEqual({ count: 0 });
+    const map = await store.getJSON<Record<string, number>>(lifelinesKey(sessionId));
+    expect(map).toEqual({ [samId]: 0 });
+  });
+
+  it.each([
+    ['between-rounds', (s: SessionState) => { s.status = 'between-rounds'; }],
+    ['preparation', (s: SessionState) => { s.status = 'preparation'; }],
+    ['paused mid-round', (s: SessionState) => { s.pausedAt = 12_345; s.pauseKind = 'facilitator'; }],
+  ])('phase gate: a send during %s → silent no-op, no deduction (review 9.3)', async (_label, mutate) => {
+    const { sessionId, samId } = await activeRound({ samTokens: 1 });
+    const state = (await store.getJSON<SessionState>(sessionKey(sessionId)))!;
+    mutate(state);
+    await store.setJSON(sessionKey(sessionId), state);
+
+    const mayaToastSeen = eventWithin(maya, 'LIFELINE_TOAST', 200);
+    const samEchoSeen = eventWithin(sam, 'LIFELINE_TOKENS', 200);
+    sam.emit('LIFELINE_SEND', { promptId: VALID_PROMPT });
+
+    expect(await mayaToastSeen).toBe(false);
+    expect(await samEchoSeen).toBe(false);
+    const map = await store.getJSON<Record<string, number>>(lifelinesKey(sessionId));
+    expect(map).toEqual({ [samId]: 1 }); // token intact
   });
 
   it('a socket not in any session → silent no-op (no crash, no error storm)', async () => {
