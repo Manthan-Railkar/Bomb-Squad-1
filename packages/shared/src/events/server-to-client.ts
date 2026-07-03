@@ -4,6 +4,7 @@ import type {
   RoundEndPayload,
   ScoreboardPayload,
   LifelineToastPayload,
+  LifelineTokensPayload,
   PauseResumePayload,
   ErrorPayload,
   ExpertManualPositionPayload,
@@ -44,6 +45,11 @@ export interface ServerToClientEvents {
   BOMB_EXPLODED: (payload: RoundEndPayload) => void;
   SCOREBOARD: (payload: ScoreboardPayload) => void;
   LIFELINE_TOAST: (payload: LifelineToastPayload) => void;
+  /** Story 9.2: a spectator's OWN lifeline-token count. Targeted per-player
+   * (never broadcast, never on SESSION_STATE) — server-driven only, no
+   * client→server counterpart. Sent after a grant at round completion and
+   * re-sent on reconnect. */
+  LIFELINE_TOKENS: (payload: LifelineTokensPayload) => void;
   EXPERT_MANUAL_POSITION: (payload: ExpertManualPositionPayload) => void;
   /** Story 9.1: an Expert's OWN chapter assignment for a restricted round.
    * Targeted per-Expert (never broadcast) — server-driven only, no client→server

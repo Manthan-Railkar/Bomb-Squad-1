@@ -141,6 +141,17 @@ export interface LifelineToastPayload {
   fromName: string;
 }
 
+/**
+ * A spectator's OWN current lifeline-token count (Story 9.2). Delivered targeted
+ * to exactly one socket — the earner — after a grant at round completion, and
+ * re-sent on reconnect. Carries ONLY the recipient's own count: no playerId, no
+ * map, no other spectator's data ever rides this event. The token map itself is
+ * server-side only (Redis `lifelinesKey`) and never placed on SESSION_STATE.
+ */
+export interface LifelineTokensPayload {
+  count: number;
+}
+
 export interface PauseResumePayload {
   reason: string;
 }

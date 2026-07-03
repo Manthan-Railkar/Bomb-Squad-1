@@ -30,7 +30,7 @@ import {
   type SessionLog,
 } from '../sessionHandlers.js';
 import { createSessionState } from '../../session/createSession.js';
-import { sessionKey, joinCodeKey, roundKey, timerKey, bombKey, reattachKey } from '../../state/keys.js';
+import { sessionKey, joinCodeKey, roundKey, timerKey, bombKey, reattachKey, lifelinesKey } from '../../state/keys.js';
 import {
   startTestSocketServer,
   createMemoryRedisStore,
@@ -2006,6 +2006,69 @@ describe('Story 2.7: durable identity, disconnect cleanup, PLAYER_REMOVE, reatta
     });
     expect(state.players[identity.playerId]).toMatchObject({ displayName: 'Maya', role: 'expert' });
     expect(Object.keys(state.players)).toHaveLength(2); // facilitator + the one Maya, no dup
+  });
+
+  // ── Lifeline token re-hydration on reconnect (Story 9.2, AC-4) ─────────────────
+  /** Flip the persisted session's spectatorLifelines modifier + seed a token count. */
+  async function armLifelines(sessionId: string, playerId: string, count: number): Promise<void> {
+    const session = (await store.getJSON<SessionState>(sessionKey(sessionId)))!;
+    await store.setJSON(sessionKey(sessionId), {
+      ...session,
+      config: { ...session.config, modifiers: { ...session.config.modifiers, spectatorLifelines: true } },
+    });
+    await store.setJSON(lifelinesKey(sessionId), { [playerId]: count });
+  }
+
+  it('a reconnecting spectator with N tokens re-receives LIFELINE_TOKENS { count: N } (modifier on)', async () => {
+    const { ack } = await createWithIdentity();
+    const { socket, identity } = await joinWithIdentity(ack.joinCode, 'Sam', 'spectator');
+    await armLifelines(ack.sessionId, identity.playerId, 2);
+    socket.disconnect();
+
+    const { socket: reconnected, events } = await server.connectClientCapturing(
+      { sessionId: ack.sessionId, reattachToken: identity.reattachToken },
+      ['LIFELINE_TOKENS'],
+    );
+    const payload = (await events.LIFELINE_TOKENS) as { count: number };
+    expect(payload).toEqual({ count: 2 });
+    reconnected.disconnect();
+  });
+
+  it('re-emits the authoritative count even when it is 0 (counter re-hydrates to the stored value)', async () => {
+    const { ack } = await createWithIdentity();
+    const { socket, identity } = await joinWithIdentity(ack.joinCode, 'Sam', 'spectator');
+    // Modifier on but no tokens earned yet → getTokens returns 0, still emitted.
+    await armLifelines(ack.sessionId, identity.playerId, 0);
+    await store.del(lifelinesKey(ack.sessionId)); // absent key ⇒ fail-closed 0
+    socket.disconnect();
+
+    const { socket: reconnected, events } = await server.connectClientCapturing(
+      { sessionId: ack.sessionId, reattachToken: identity.reattachToken },
+      ['LIFELINE_TOKENS'],
+    );
+    expect(await events.LIFELINE_TOKENS).toEqual({ count: 0 });
+    reconnected.disconnect();
+  });
+
+  it('NO LIFELINE_TOKENS on reconnect when the modifier is off (AC-2)', async () => {
+    const { ack } = await createWithIdentity();
+    const { socket, identity } = await joinWithIdentity(ack.joinCode, 'Sam', 'spectator');
+    // Modifier stays OFF (default). Even a stray seeded count must not be re-sent.
+    await store.setJSON(lifelinesKey(ack.sessionId), { [identity.playerId]: 3 });
+    socket.disconnect();
+
+    const { socket: reconnected, events } = await server.connectClientCapturing(
+      { sessionId: ack.sessionId, reattachToken: identity.reattachToken },
+      ['LIFELINE_TOKENS'],
+    );
+    // The event must never arrive — race it against a short timeout.
+    const sentinel = Symbol('none');
+    const result = await Promise.race([
+      events.LIFELINE_TOKENS,
+      new Promise((r) => setTimeout(() => r(sentinel), 150)),
+    ]);
+    expect(result).toBe(sentinel);
+    reconnected.disconnect();
   });
 
   it('a refresh within the grace window preserves the player team + role + relayOrder (AC 4 — same seat)', async () => {

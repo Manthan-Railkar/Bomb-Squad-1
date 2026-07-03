@@ -52,6 +52,7 @@ import { designateEqualisationVolunteer } from '../session/equalisationVolunteer
 import { pauseSession, resumeSession, canResume, clearDisconnectedPlayer } from '../session/pauseSession.js';
 import { freezeRoundTimers, resumeRoundTimers } from '../timer/pauseTimers.js';
 import { initializeRoundBombs } from '../round/initializeRoundBombs.js';
+import { getTokens } from '../lifelines/lifelineTokens.js';
 
 /**
  * Server-assigned per-socket bookkeeping (Socket.IO `socket.data`). Pointers
@@ -567,6 +568,25 @@ async function restoreReattachedSocket(
             'mid-round bomb/timer replay skipped',
           );
         }
+      }
+    }
+
+    // Story 9.2: re-hydrate the reconnecting player's lifeline-token counter. Only
+    // when the modifier is on — then emit the authoritative count even if 0, so the
+    // client's counter re-mounts to the stored value on reload (same "reconnect
+    // re-delivers persisted state" posture as BOMB_INIT/EXPERT_CHAPTER_ASSIGNMENT
+    // above). Runs for ALL reconnecting players regardless of team/status — a
+    // genuine spectator (no teamId, never in the active-replay block above) still
+    // re-hydrates. Self-guarded so a lifelines read failure never fails the reattach.
+    if (latest.config.modifiers.spectatorLifelines) {
+      try {
+        const count = await getTokens(deps.redis, sessionId, playerId);
+        socket.emit('LIFELINE_TOKENS', { count });
+      } catch (lifelineErr) {
+        deps.log.info(
+          { lifelineErr, sessionId, playerId },
+          'lifeline token re-hydration skipped',
+        );
       }
     }
 

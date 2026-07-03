@@ -50,6 +50,16 @@ interface GameState {
    * prior round's restriction never bleeds into an unrestricted one.
    */
   assignedChapterIds: string[] | null;
+  /**
+   * This spectator's OWN lifeline-token balance (Story 9.2). A STANDING balance,
+   * not per-round presentation — it must NOT reset on setBomb (unlike
+   * resolution/scoreboard); it changes only via the server-authoritative
+   * LIFELINE_TOKENS event (grant this story, spend Story 9.3) and clears only on
+   * clearSession. The client never derives it. Rendered only when
+   * `session.config.modifiers.spectatorLifelines === true` (the modifier-off HIDE
+   * is a render gate, independent of this stored value).
+   */
+  lifelineTokens: number;
   setSession: (session: SessionState) => void;
   /** Record this client's durable playerId (from SESSION_IDENTITY or a stored seed). */
   setMyPlayerId: (playerId: string | null) => void;
@@ -72,6 +82,8 @@ interface GameState {
   setStrike: (payload: StrikePayload) => void;
   /** Set (or clear, with `null`) this Expert's restricted chapter set (Story 9.1). */
   setAssignedChapters: (chapterIds: string[] | null) => void;
+  /** Set this spectator's lifeline-token balance from the LIFELINE_TOKENS event (Story 9.2). */
+  setLifelineTokens: (count: number) => void;
   setConnection: (connection: 'disconnected' | 'connecting' | 'connected') => void;
 }
 
@@ -95,6 +107,7 @@ export const useGameStore = create<GameState>((set) => ({
   myPlayerId: null,
   removalNotice: null,
   assignedChapterIds: null,
+  lifelineTokens: 0,
 
   setSession: (session) => set({ session }),
   setMyPlayerId: (myPlayerId) => set({ myPlayerId }),
@@ -108,6 +121,7 @@ export const useGameStore = create<GameState>((set) => ({
       myPlayerId: null,
       removalNotice: notice ?? null,
       assignedChapterIds: null,
+      lifelineTokens: 0,
     }),
   clearRemovalNotice: () => set({ removalNotice: null }),
   // A fresh bomb (BOMB_INIT) means a new round — clear any prior resolution AND
@@ -150,6 +164,10 @@ export const useGameStore = create<GameState>((set) => ({
     }),
 
   setAssignedChapters: (assignedChapterIds) => set({ assignedChapterIds }),
+
+  // Standing balance — set only from the server's LIFELINE_TOKENS event. Deliberately
+  // NOT touched by setBomb (tokens persist across rounds); cleared only by clearSession.
+  setLifelineTokens: (lifelineTokens) => set({ lifelineTokens }),
 
   setConnection: (connection) => set({ connection }),
 }));

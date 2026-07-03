@@ -14,6 +14,7 @@ export type {
   RoundEndPayload,
   ScoreboardPayload,
   LifelineToastPayload,
+  LifelineTokensPayload,
   PauseResumePayload,
   ErrorPayload,
   ManualPositionPayload,

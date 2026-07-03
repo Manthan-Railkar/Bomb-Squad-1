@@ -6,3 +6,4 @@ export * from './generation/index.js';
 export * from './session/index.js';
 export * from './voice/index.js';
 export * from './roles/index.js';
+export * from './lifelines/index.js';

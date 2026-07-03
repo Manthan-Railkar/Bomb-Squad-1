@@ -209,6 +209,10 @@ export const MODIFIER_ASYMMETRIC = 'Asymmetric Expert roles';
 export const MODIFIER_ASYMMETRIC_SUB = 'Split manual chapters across Experts. Off for first-timers.';
 export const MODIFIER_LIFELINES = 'Spectator lifelines';
 export const MODIFIER_LIFELINES_SUB = 'Let spectators spend tokens to send hints.';
+// Story 9.2: passive lifeline-token counter shown to watching players when the
+// Spectator Lifelines modifier is on. {n} is interpolated at render. The send
+// affordance (button + hint list) is Story 9.3 — this is the balance only.
+export const LIFELINE_TOKENS_LABEL = (n: number): string => `Lifeline tokens: ${n}`;
 export const MODULE_POOL_LABEL = 'Module pool';
 export const MODULE_POOL_SUB = 'Tap to include or exclude. Greyed modules arrive in a later release.';
 export const MODULE_POOL_COMING_SOON = 'coming soon';

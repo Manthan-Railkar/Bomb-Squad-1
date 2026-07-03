@@ -2,6 +2,7 @@ import type {
   RoundEndPayload,
   ScoreboardPayload,
   LifelineToastPayload,
+  LifelineTokensPayload,
   PauseResumePayload,
   StrikePayload,
   ErrorPayload,
@@ -21,7 +22,7 @@ import { useGameStore } from '../store/gameStore.js';
  * here — never listeners owned by other modules or socket.io internals.
  */
 export function bindServerEvents(socket: AppClientSocket): () => void {
-  const { setSession, setBomb, applyModuleUpdate, setTimer, setStrike, setResolution, setScoreboard, setConnection, clearSession, setMyPlayerId, setAssignedChapters } =
+  const { setSession, setBomb, applyModuleUpdate, setTimer, setStrike, setResolution, setScoreboard, setConnection, clearSession, setMyPlayerId, setAssignedChapters, setLifelineTokens } =
     useGameStore.getState();
 
   const onBombDefused = (payload: RoundEndPayload) => {
@@ -50,6 +51,9 @@ export function bindServerEvents(socket: AppClientSocket): () => void {
   const onLifelineToast = (payload: LifelineToastPayload) => {
     console.info('[socket] LIFELINE_TOAST', payload);
   };
+  // Story 9.2: this spectator's OWN token count (grant at round completion,
+  // re-sent on reconnect). Server-authoritative — the client only mirrors it.
+  const onLifelineTokens = (p: LifelineTokensPayload) => setLifelineTokens(p.count);
   const onPaused = (payload: PauseResumePayload) => {
     console.info('[socket] PAUSED', payload);
   };
@@ -122,6 +126,7 @@ export function bindServerEvents(socket: AppClientSocket): () => void {
   socket.on('BOMB_EXPLODED', onBombExploded);
   socket.on('SCOREBOARD', onScoreboard);
   socket.on('LIFELINE_TOAST', onLifelineToast);
+  socket.on('LIFELINE_TOKENS', onLifelineTokens);
   socket.on('PAUSED', onPaused);
   socket.on('RESUMED', onResumed);
   socket.on('ERROR', onError);
@@ -144,6 +149,7 @@ export function bindServerEvents(socket: AppClientSocket): () => void {
     socket.off('BOMB_EXPLODED', onBombExploded);
     socket.off('SCOREBOARD', onScoreboard);
     socket.off('LIFELINE_TOAST', onLifelineToast);
+    socket.off('LIFELINE_TOKENS', onLifelineTokens);
     socket.off('PAUSED', onPaused);
     socket.off('RESUMED', onResumed);
     socket.off('ERROR', onError);

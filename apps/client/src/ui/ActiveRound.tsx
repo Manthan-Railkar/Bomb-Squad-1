@@ -12,7 +12,7 @@ import PauseOverlay from './PauseOverlay.js';
 import SpeakerIndicator from './SpeakerIndicator.js';
 import MuteControl from './MuteControl.js';
 import AudioUnblockPrompt from './AudioUnblockPrompt.js';
-import { ROUND_IN_PROGRESS, WATCHING_THE_BOMB_ROOM, RESTING_SPECTATE } from './copy.js';
+import { ROUND_IN_PROGRESS, WATCHING_THE_BOMB_ROOM, RESTING_SPECTATE, LIFELINE_TOKENS_LABEL } from './copy.js';
 
 /**
  * Active-round surface routing (Story 8.3, FR11) — the same session URL shows
@@ -38,6 +38,9 @@ export default function ActiveRound() {
   // Story 9.1: this Expert's restricted chapter set (null = full access). Read
   // reactively so the manual re-restricts the moment the assignment lands.
   const assignedChapterIds = useGameStore((s) => s.assignedChapterIds);
+  // Story 9.2: this spectator's standing lifeline-token balance. Read reactively
+  // so the counter updates the instant a grant lands.
+  const lifelineTokens = useGameStore((s) => s.lifelineTokens);
 
   const chapters = useMemo(
     () => buildChapters(SANDBOX_MODULES.flatMap((m) => m.getManualPages())),
@@ -63,16 +66,32 @@ export default function ActiveRound() {
   const myTeamId = self?.teamId;
   const isResting = myTeamId !== undefined && myTeamId !== session.activeTeamId;
 
+  // Story 9.2: passive lifeline-token counter for watching players (spectators +
+  // resting-team relayers — Design Decision 1). Gated STRICTLY on the modifier
+  // flag: even if a stale non-zero `lifelineTokens` lingers from a prior
+  // modifier-on config, the modifier-off branch renders no counter (AC-2). The
+  // send affordance is Story 9.3 — this is the balance only.
+  const showLifelineTokens = session.config.modifiers.spectatorLifelines;
+  const lifelineCounter = showLifelineTokens ? (
+    <p
+      data-testid="lifeline-token-counter"
+      className="mt-4 font-mono text-xs uppercase tracking-widest text-ink-muted"
+    >
+      {LIFELINE_TOKENS_LABEL(lifelineTokens)}
+    </p>
+  ) : null;
+
   let surface: ReactNode;
   if (isResting) {
     surface = (
-      <div className="flex flex-1 items-center justify-center p-8">
+      <div className="flex flex-1 flex-col items-center justify-center p-8">
         <p
           data-testid="resting-standby"
           className="max-w-md text-center font-mono text-sm uppercase tracking-widest text-ink-muted"
         >
           {RESTING_SPECTATE}
         </p>
+        {lifelineCounter}
       </div>
     );
   } else if (role === 'defuser') {
@@ -90,10 +109,13 @@ export default function ActiveRound() {
       );
   } else {
     surface = (
-      <div className="flex flex-1 items-center justify-center p-8">
+      <div className="flex flex-1 flex-col items-center justify-center p-8">
         <p className="font-mono text-sm uppercase tracking-widest text-ink-muted">
           {role === 'spectator' ? WATCHING_THE_BOMB_ROOM : ROUND_IN_PROGRESS}
         </p>
+        {/* Counter only for a genuine spectator (the Facilitator/ROUND_IN_PROGRESS
+            fallback never earns tokens). */}
+        {role === 'spectator' ? lifelineCounter : null}
       </div>
     );
   }

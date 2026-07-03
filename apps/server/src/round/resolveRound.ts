@@ -42,6 +42,7 @@ import {
 import { remainingMs } from '../timer/timerCore.js';
 import type { TimerScheduler } from '../timer/timerScheduler.js';
 import { buildScoreboard } from './buildScoreboard.js';
+import { grantToken } from '../lifelines/lifelineTokens.js';
 
 export interface ResolveRoundDeps {
   redis: RedisStore;
@@ -304,6 +305,63 @@ async function resolveRoundCeremony(
     // team is still connected to its Bomb Room (it only re-mints to the lounge on
     // the NEXT round's open), so removing the forwarded ghost is race-free.
     void deps.loungeBridge?.unbridgeAll(sessionId).catch(() => undefined);
+
+    // Story 9.2: mint spectator lifeline tokens. This fires EXACTLY ONCE per
+    // completed round (the enteringBetweenRounds fence guarantees it — the last
+    // team to resolve), AFTER the authoritative SESSION_STATE/SCOREBOARD broadcasts
+    // so a lifelines failure can never delay or block round completion. Guarded on
+    // the modifier (AC-2: off ⇒ no grant) AND `!round.retry` (AC-1: a retry replays
+    // an already-spectated round, so it must not re-grant — mirrors the
+    // pointer-advance `!round.retry` guard above).
+    if (updatedSession.config.modifiers.spectatorLifelines && !round.retry) {
+      // EARNER PREDICATE (Design Decision 1): everyone who WATCHED this round —
+      // a non-Facilitator NOT on the just-played active team. Covers both a
+      // genuine spectator (teamId undefined ≠ activeTeamId) and a resting-team
+      // relay player (benched team ≠ activeTeamId); excludes the Facilitator and
+      // the active team who played. `activeTeamId` still points at the just-played
+      // team here (it only advances on the next PREPARATION_OPEN).
+      const earners = Object.values(updatedSession.players).filter(
+        (p) => p.role !== 'facilitator' && p.teamId !== updatedSession.activeTeamId,
+      );
+      // Grant each earner INDEPENDENTLY — a single grantToken failure must NOT
+      // abort the rest (one earner's Redis hiccup shouldn't strand the others
+      // ungranted, and a whole-loop catch would mislabel a partial success as
+      // "no tokens" while some were already persisted). Only the successes are
+      // collected for delivery. Serialized inside the per-session ceremony chain.
+      const counts = new Map<string, number>();
+      for (const earner of earners) {
+        try {
+          counts.set(earner.playerId, await grantToken(deps.redis, sessionId, earner.playerId));
+        } catch (grantErr) {
+          deps.log.error(
+            { grantErr, sessionId, roundNumber, playerId: earner.playerId },
+            'lifeline grant failed for one earner; others unaffected',
+          );
+        }
+      }
+
+      // Deliver each earner ONLY their own count — targeted per-socket, never on
+      // the SESSION_STATE broadcast (AC-3/AC-4). Mirrors Story 9.1's per-Expert
+      // fetchSockets emit. A player with no live socket simply misses this push
+      // and re-hydrates from Redis on reconnect (Task 4). Wrapped separately from
+      // the grant so a fetchSockets hiccup leaves the already-persisted counts
+      // intact (clients re-hydrate on reconnect) and never fails the resolution.
+      try {
+        const sockets = await deps.io.in(sessionRoom(sessionId)).fetchSockets();
+        for (const member of sockets) {
+          const count = counts.get(member.data.playerId ?? '');
+          if (count !== undefined) member.emit('LIFELINE_TOKENS', { count });
+        }
+      } catch (deliverErr) {
+        deps.log.error(
+          { deliverErr, sessionId, roundNumber },
+          'lifeline token delivery failed; counts persisted, clients re-hydrate on reconnect',
+        );
+      }
+      // `granted` counts the tokens actually PERSISTED (not merely the earner
+      // count), so the log never overstates a partial grant.
+      deps.log.info({ sessionId, roundNumber, granted: counts.size }, 'lifeline tokens granted');
+    }
   }
 }
 
