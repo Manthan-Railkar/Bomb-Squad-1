@@ -183,8 +183,9 @@ test('modifier OFF: no lifeline counter renders for the spectator (AC-2)', async
   try {
     await openPreparation(facilitator);
     await startTheRound(facilitator);
-    // Sam is watching the live round (spectator surface is up)…
-    await expect(sam.getByText(/watching the bomb room/i)).toBeVisible({ timeout: 30_000 });
+    // Sam is watching the live round — Story 9.4 replaced the standby text with the
+    // composed Spectator Lounge (the lounge indicator is its stable landmark).
+    await expect(sam.getByTestId('lounge-voice-indicator')).toBeVisible({ timeout: 30_000 });
     // …but the modifier is off, so the counter never renders for any role.
     await expect(sam.getByTestId(COUNTER)).toHaveCount(0);
     await expect(facilitator.getByTestId(COUNTER)).toHaveCount(0);

@@ -1,7 +1,7 @@
 import type { TeamId, TimerState } from '@bomb-squad/shared';
 import type { RedisStore } from '../state/redis.js';
 import { timerKey } from '../state/keys.js';
-import { teamRoom, type SessionIOServer, type SessionLog } from '../handlers/sessionHandlers.js';
+import { bombAudience, type SessionIOServer, type SessionLog } from '../handlers/sessionHandlers.js';
 import { pause as pauseTimer, resume as resumeTimer } from './timerCore.js';
 import type { TimerScheduler } from './timerScheduler.js';
 
@@ -42,7 +42,8 @@ export async function freezeRoundTimers(
     const paused = pauseTimer(timer, now);
     if (paused === timer) continue; // already paused — wake cancelled above
     await deps.redis.setJSON(timerKey(sessionId, teamId), paused);
-    io.to(teamRoom(sessionId, teamId)).emit('TIMER_UPDATE', paused);
+    // Story 9.4: dual-target so the lounge LCD freezes with the Bomb Room.
+    io.to(bombAudience(sessionId, teamId)).emit('TIMER_UPDATE', paused);
     deps.log.info({ sessionId, teamId }, 'timer frozen (pause)');
   }
 }
@@ -67,7 +68,8 @@ export async function resumeRoundTimers(
     if (resumed === timer) continue; // wasn't paused
     await deps.redis.setJSON(timerKey(sessionId, teamId), resumed);
     deps.timer.arm(sessionId, teamId, resumed);
-    io.to(teamRoom(sessionId, teamId)).emit('TIMER_UPDATE', resumed);
+    // Story 9.4: dual-target so the lounge LCD resumes with the Bomb Room.
+    io.to(bombAudience(sessionId, teamId)).emit('TIMER_UPDATE', resumed);
     deps.log.info({ sessionId, teamId }, 'timer resumed');
   }
 }

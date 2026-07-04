@@ -9,6 +9,7 @@ import type {
   SessionIdentityPayload,
   SessionRemovedPayload,
   ExpertChapterAssignmentPayload,
+  ExpertManualPositionPayload,
 } from '@bomb-squad/shared';
 import type { TimerState } from '@bomb-squad/shared';
 import type { AppClientSocket } from './socket.js';
@@ -22,7 +23,7 @@ import { useGameStore } from '../store/gameStore.js';
  * here — never listeners owned by other modules or socket.io internals.
  */
 export function bindServerEvents(socket: AppClientSocket): () => void {
-  const { setSession, setBomb, applyModuleUpdate, setTimer, setStrike, setResolution, setScoreboard, setConnection, clearSession, setMyPlayerId, setAssignedChapters, setLifelineTokens, pushLifelineToast } =
+  const { setSession, setBomb, applyModuleUpdate, setTimer, setStrike, setResolution, setScoreboard, setConnection, clearSession, setMyPlayerId, setAssignedChapters, setLifelineTokens, pushLifelineToast, setExpertManualPosition } =
     useGameStore.getState();
 
   const onBombDefused = (payload: RoundEndPayload) => {
@@ -93,6 +94,16 @@ export function bindServerEvents(socket: AppClientSocket): () => void {
     if (currentRound !== undefined && payload.roundNumber !== currentRound) return;
     setAssignedChapters(payload.chapterIds);
   };
+  // Story 9.4: an Expert's current manual chapter, for the Spectator Lounge
+  // multiview. Broadcast session-wide on every Expert nav (spectators are in
+  // sessionRoom) + replayed per-Expert to a mid-round joiner. Each frame updates
+  // exactly one Expert's entry, keyed by durable playerId. No round-staleness guard
+  // needed: the position is inherently current, and setBomb resets the map at the
+  // new-round boundary (unlike the chapter ASSIGNMENT, which restricts and must be
+  // round-gated).
+  const onExpertManualPosition = (payload: ExpertManualPositionPayload) => {
+    setExpertManualPosition(payload);
+  };
   // Durable identity (Story 2.7): persist the private packet so a refresh can
   // re-attach via the handshake auth. AR15: the token is a secret — never log it.
   const onIdentity = (payload: SessionIdentityPayload) => {
@@ -140,6 +151,7 @@ export function bindServerEvents(socket: AppClientSocket): () => void {
   socket.on('RESUMED', onResumed);
   socket.on('ERROR', onError);
   socket.on('EXPERT_CHAPTER_ASSIGNMENT', onExpertChapterAssignment);
+  socket.on('EXPERT_MANUAL_POSITION', onExpertManualPosition);
 
   socket.on('connect', onConnect);
   socket.on('disconnect', onDisconnect);
@@ -163,6 +175,7 @@ export function bindServerEvents(socket: AppClientSocket): () => void {
     socket.off('RESUMED', onResumed);
     socket.off('ERROR', onError);
     socket.off('EXPERT_CHAPTER_ASSIGNMENT', onExpertChapterAssignment);
+    socket.off('EXPERT_MANUAL_POSITION', onExpertManualPosition);
     socket.off('connect', onConnect);
     socket.off('disconnect', onDisconnect);
     socket.off('connect_error', onConnectError);

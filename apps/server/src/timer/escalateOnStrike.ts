@@ -18,7 +18,7 @@
 import type { SessionState, StrikeCount, TeamId, TimerState } from '@bomb-squad/shared';
 import type { RedisStore } from '../state/redis.js';
 import { sessionKey, timerKey } from '../state/keys.js';
-import { teamRoom, type SessionIOServer, type SessionLog } from '../handlers/sessionHandlers.js';
+import { bombAudience, type SessionIOServer, type SessionLog } from '../handlers/sessionHandlers.js';
 import { rebaseForStrike } from './timerCore.js';
 import type { TimerScheduler } from './timerScheduler.js';
 
@@ -65,8 +65,9 @@ export async function escalateOnStrike(
   deps.timer.arm(sessionId, teamId, rebased);
 
   // STRIKE carries the NEW absolute strike total (not a delta) + the rebased
-  // timer. The 4.5 strike HUD and 4.4 LCD render directly from this.
-  deps.io.to(teamRoom(sessionId, teamId)).emit('STRIKE', { teamId, strikes, timer: rebased });
+  // timer. The 4.5 strike HUD and 4.4 LCD render directly from this. Story 9.4:
+  // dual-target the lounge so a read-only spectator mirror sees the strike + rebase.
+  deps.io.to(bombAudience(sessionId, teamId)).emit('STRIKE', { teamId, strikes, timer: rebased });
 
   deps.log.info({ sessionId, teamId, strikes, speedMultiplier: rebased.speedMultiplier }, 'strike escalated');
 }

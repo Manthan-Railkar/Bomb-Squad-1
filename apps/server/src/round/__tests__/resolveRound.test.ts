@@ -134,7 +134,12 @@ describe('resolveRound — defuse (AC-1)', () => {
     // Team result first, then the session-wide between-rounds entry (SESSION_STATE
     // routes clients to the scoreboard, SCOREBOARD carries the preview).
     expect(h.emitted).toEqual([
-      { room: `session:${SID}:team:A`, event: 'BOMB_DEFUSED', payload: { teamId: 'A', elapsedMs: 60_000 } },
+      // Story 9.4: the resolution is dual-targeted to the active team room + lounge.
+      {
+        room: [`session:${SID}:team:A`, `session:${SID}:lounge`],
+        event: 'BOMB_DEFUSED',
+        payload: { teamId: 'A', elapsedMs: 60_000 },
+      },
       { room: `session:${SID}`, event: 'SESSION_STATE', payload: session },
       {
         room: `session:${SID}`,
@@ -160,7 +165,7 @@ describe('resolveRound — failures (AC-2)', () => {
     expect((await loadRound(h))!.status).toBe('time-expired');
     // Team failure event first, then the between-rounds entry (single team → last).
     expect(h.emitted[0]).toEqual({
-      room: `session:${SID}:team:A`,
+      room: [`session:${SID}:team:A`, `session:${SID}:lounge`],
       event: 'BOMB_EXPLODED',
       payload: { teamId: 'A', elapsedMs: TIMER_MS },
     });

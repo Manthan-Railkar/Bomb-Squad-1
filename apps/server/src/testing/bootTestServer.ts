@@ -21,6 +21,7 @@ import {
   type SessionLog,
 } from '../handlers/sessionHandlers.js';
 import { registerModuleHandlers } from '../handlers/moduleHandlers.js';
+import { registerManualHandlers } from '../handlers/manualHandlers.js';
 import { createTimerScheduler } from '../timer/index.js';
 import type { RedisStore, UpdateDecision } from '../state/redis.js';
 
@@ -108,6 +109,10 @@ export async function bootTestServer(port = 0): Promise<TestServer> {
   const archive = noopArchive();
   registerSessionHandlers(io, { redis, log: noopLog, timer, archive });
   registerModuleHandlers(io, { redis, log: noopLog, timer, archive });
+  // Story 9.4: the Expert manual-position relay drives the Spectator Lounge
+  // multiview (MANUAL_NAVIGATE → EXPERT_MANUAL_POSITION). Register it so the e2e
+  // suite exercises manual navigation + the lounge mirror end-to-end.
+  registerManualHandlers(io, { redis, log: noopLog });
   await new Promise<void>((resolve) => httpServer.listen(port, resolve));
   const bound = (httpServer.address() as AddressInfo).port;
   return {

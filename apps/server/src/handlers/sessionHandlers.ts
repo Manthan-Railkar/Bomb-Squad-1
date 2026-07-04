@@ -12,6 +12,7 @@ import type {
   TimerState,
   RoundState,
   ScoreboardPayload,
+  ExpertManualPositionPayload,
 } from '@bomb-squad/shared';
 import { buildFinalScoreboard } from '@bomb-squad/shared';
 import {
@@ -23,7 +24,7 @@ import {
 } from '@bomb-squad/shared';
 import type { RedisStore } from '../state/redis.js';
 import type { PostgresArchive } from '../persistence/index.js';
-import { sessionKey, joinCodeKey, roundKey, timerKey, bombKey } from '../state/keys.js';
+import { sessionKey, joinCodeKey, roundKey, timerKey, bombKey, manualPositionKey } from '../state/keys.js';
 import { startSegment } from '../timer/timerCore.js';
 import type { TimerScheduler } from '../timer/timerScheduler.js';
 import { generateJoinCode } from '../session/joinCode.js';
@@ -139,6 +140,34 @@ export const sessionRoom = (sessionId: string): string => `session:${sessionId}`
  * broadcast target Epic 8.4+ team-scoped bomb/timer events depend on. */
 export const teamRoom = (sessionId: string, teamId: TeamId): string =>
   `session:${sessionId}:team:${teamId}`;
+
+/**
+ * Socket.IO room for the Spectator Lounge audience of a session (Story 9.4) — the
+ * dual-target for the active team's bomb stream. Membership is (re)computed each
+ * ROUND_START as every roster socket NOT on the active team: genuine spectators,
+ * resting-team players, and the facilitator (`teamId !== activeTeamId`).
+ *
+ * DISTINCT from the LiveKit `spectator-lounge:{sessionId}` VOICE room (different
+ * plane — do not conflate) and DISTINCT from `teamRoom`. Keeping it separate is
+ * what preserves Story 9.3's `LIFELINE_TOAST` targeting: the toast stays
+ * team-room-only and must never reach a spectator/sender (Regression Guard R1).
+ */
+export const loungeRoom = (sessionId: string): string =>
+  `session:${sessionId}:lounge`;
+
+/**
+ * The room list a bomb-stream emit dual-targets during a live round (Story 9.4):
+ * the active team's private room PLUS the lounge. At every bomb-stream emit site
+ * `teamId === activeTeamId` (only the active team has a live bomb/timer under the
+ * Story 8.11 Model B), so the lounge only ever mirrors the ACTIVE bomb. socket.io
+ * de-duplicates a socket that is in both rooms, and an active-team socket is never
+ * in the lounge, so no recipient is double-delivered. NOT used for `LIFELINE_TOAST`
+ * (stays team-room-only — R1).
+ */
+export const bombAudience = (sessionId: string, teamId: TeamId): string[] => [
+  teamRoom(sessionId, teamId),
+  loungeRoom(sessionId),
+];
 
 type ParseResult =
   | { ok: true; config?: Partial<RoundConfig> }
@@ -417,6 +446,44 @@ async function removeLobbyPlayer(
 }
 
 /**
+ * Replay the active team's live bomb snapshot + every Expert's persisted manual
+ * position to ONE lounge socket (Story 9.4). Used on mid-round reattach: a
+ * spectator / resting-team player / facilitator who joins or refreshes DURING a
+ * live round missed the dual-targeted BOMB_INIT/TIMER_UPDATE broadcast and every
+ * prior EXPERT_MANUAL_POSITION, so unicast the current state straight from Redis
+ * (read-only; ROUND_START remains the authority that armed them).
+ *
+ * Bomb+timer are both-or-neither (a live timer ⟺ the round is still playable —
+ * same gate the team-player replay uses). The manual replay is fail-open: an
+ * absent/empty map emits nothing (placeholder panes until the first live nav),
+ * never throws. Stale entries for a departed Expert are harmless — the client
+ * filters panes to the CURRENT active-team Expert roster. The caller wraps this
+ * in try/catch so a replay hiccup never fails the SESSION_STATE/identity restore.
+ */
+async function replayLoungeSnapshot(
+  socket: SessionServerSocket,
+  redis: RedisStore,
+  sessionId: string,
+  activeTeamId: TeamId,
+): Promise<void> {
+  const timer = await redis.getJSON<TimerState>(timerKey(sessionId, activeTeamId));
+  const bomb =
+    timer !== null ? await redis.getJSON<BombState>(bombKey(sessionId, activeTeamId)) : null;
+  if (timer !== null && bomb !== null) {
+    socket.emit('BOMB_INIT', bomb);
+    socket.emit('TIMER_UPDATE', timer);
+  }
+  // Replay each Expert's current chapter so every multiview pane fills at once (AC-4).
+  const positions = await redis.getJSON<Record<string, string>>(manualPositionKey(sessionId));
+  if (positions !== null) {
+    for (const [expertPlayerId, chapterId] of Object.entries(positions)) {
+      const payload: ExpertManualPositionPayload = { chapterId, playerId: expertPlayerId };
+      socket.emit('EXPERT_MANUAL_POSITION', payload);
+    }
+  }
+}
+
+/**
  * Reconnect restore (Story 2.7, AC 4): if the handshake middleware resolved a
  * durable identity onto `socket.data`, re-attach this socket to its session
  * without a fresh SESSION_JOIN. Handles the Facilitator (who has no `?join=`
@@ -572,6 +639,27 @@ async function restoreReattachedSocket(
           deps.log.info(
             { replayErr, sessionId, playerId, teamId },
             'mid-round bomb/timer replay skipped',
+          );
+        }
+      }
+
+      // Story 9.4: a reconnecting LOUNGE member (spectator / resting-team player /
+      // facilitator — anyone NOT on the active team) re-enters the lounge room and
+      // is unicast the active team's bomb snapshot + every Expert's manual position
+      // (the dual-targeted broadcast already fired before this socket rejoined).
+      // The predicate `teamId !== activeTeamId` naturally includes the teamless
+      // spectator/facilitator (undefined !== a real id). Self-guarded so a replay
+      // hiccup never fails the reattach.
+      const activeTeamId = latest.activeTeamId;
+      const myTeamId = latest.players[playerId]?.teamId;
+      if (activeTeamId !== undefined && myTeamId !== activeTeamId) {
+        await socket.join(loungeRoom(sessionId));
+        try {
+          await replayLoungeSnapshot(socket, deps.redis, sessionId, activeTeamId);
+        } catch (loungeErr) {
+          deps.log.info(
+            { loungeErr, sessionId, playerId, activeTeamId },
+            'mid-round lounge replay skipped',
           );
         }
       }
@@ -1622,15 +1710,37 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
           chapterAssignments,
         });
 
+        // Story 9.4: clear last round's per-Expert manual positions so a spectator
+        // in the NEW round starts with blank multiview panes until each Expert
+        // navigates (or is replayed on a mid-round join). Best-effort — a stale map
+        // would only briefly show last round's pages; the client also resets
+        // expertManualPositions on setBomb (the new-round BOMB_INIT).
+        await deps.redis.del(manualPositionKey(sessionId));
+
         // Route every roster socket into its team room (architecture
         // Pattern 1) so 8.4+ team-scoped broadcasts have a target.
         // Epic 3: voice tokens are re-minted here on role change.
+        // Story 9.4: ALSO (re)compute the lounge audience — every socket NOT on the
+        // active team (genuine spectators, the teamless facilitator, resting-team
+        // players) joins `loungeRoom` to receive the dual-targeted active bomb stream.
+        const activeTeamId = result.state.activeTeamId;
         const sockets = await io.in(sessionRoom(sessionId)).fetchSockets();
         for (const member of sockets) {
           // Resolve the roster entry by the durable playerId (Story 2.7), not the
           // rotating socket.id — players is keyed by the durable id now.
           const teamId = result.state.players[member.data.playerId ?? '']?.teamId;
+          // Recomputed each round: leave any stale lounge membership first so a
+          // socket that rested last round and now plays is OUT of the lounge (and
+          // vice-versa), then (re)join per the fresh active team.
+          member.leave(loungeRoom(sessionId));
           if (teamId !== undefined) member.join(teamRoom(sessionId, teamId));
+          // `teamId !== activeTeamId` covers all three lounge cohorts (teamless
+          // spectator/facilitator: undefined !== a real id; resting player: their
+          // team !== the active team). Guarded on a defined activeTeamId so a
+          // defensive undefined never leaks the bomb to the active team itself.
+          if (activeTeamId !== undefined && teamId !== activeTeamId) {
+            member.join(loungeRoom(sessionId));
+          }
         }
 
         io.to(sessionRoom(sessionId)).emit('SESSION_STATE', result.state);
@@ -1646,7 +1756,9 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
           const timer = startSegment(result.state.config.timerMs, now);
           await deps.redis.setJSON(timerKey(sessionId, teamId), timer);
           deps.timer.arm(sessionId, teamId, timer);
-          io.to(teamRoom(sessionId, teamId)).emit('TIMER_UPDATE', timer);
+          // Story 9.4: dual-target the lounge so a spectator present at ROUND_START
+          // gets the active clock (teamIds === [activeTeamId] under Model B).
+          io.to(bombAudience(sessionId, teamId)).emit('TIMER_UPDATE', timer);
           deps.log.info(
             { sessionId, roundNumber: result.round.roundNumber, teamId, timerMs: result.state.config.timerMs },
             'timer started',
@@ -1657,7 +1769,10 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
         // armed (above) and the team rooms are joined, so the snapshot and its
         // clock are both ready when the client renders the bomb.
         for (const teamId of teamIds) {
-          io.to(teamRoom(sessionId, teamId)).emit('BOMB_INIT', bombs[teamId]);
+          // Story 9.4: dual-target the lounge so a spectator present at ROUND_START
+          // gets the initial snapshot — without it the client's applyModuleUpdate
+          // drops every later delta (it early-returns while bomb === null).
+          io.to(bombAudience(sessionId, teamId)).emit('BOMB_INIT', bombs[teamId]);
         }
 
         // Story 9.1: deliver each restricted Expert their OWN chapter set —

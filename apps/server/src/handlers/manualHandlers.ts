@@ -96,9 +96,20 @@ export function registerManualHandlers(io: ManualIOServer, deps: ManualHandlerDe
           chapterId: parsed.chapterId,
           playerId,
         };
-        // Persist then emit (handler pipeline order). Single-key write —
-        // nothing partial to roll back.
-        await deps.redis.setJSON(manualPositionKey(sessionId), position);
+        // Persist then emit (handler pipeline order). Story 9.4: MERGE this Expert's
+        // chapter into the per-Expert map (Record<playerId, chapterId>) via a
+        // compare-and-set, so a concurrent Expert's navigation can't clobber another
+        // Expert's entry (the old single last-write-wins object couldn't survive a
+        // multi-Expert round for the spectator multiview). The per-nav broadcast is
+        // UNCHANGED — the client accumulates by playerId, one pane per Expert.
+        await deps.redis.updateJSON<Record<string, string>, null>(
+          manualPositionKey(sessionId),
+          (current) => ({
+            commit: true,
+            value: { ...(current ?? {}), [playerId]: parsed.chapterId },
+            result: null,
+          }),
+        );
         io.to(sessionRoom(sessionId)).emit('EXPERT_MANUAL_POSITION', position);
         deps.log.info({ sessionId, playerId, chapterId: parsed.chapterId }, 'manual navigate');
       } catch (err) {

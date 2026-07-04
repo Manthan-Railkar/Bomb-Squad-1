@@ -38,20 +38,59 @@ export function isPrimaryActivation(button: number, delta: number): boolean {
   return button === 0 && delta <= CLICK_DRAG_TOLERANCE_PX;
 }
 
+/**
+ * Read-only gesture gate (Story 9.4). The Spectator Lounge renders the active
+ * team's bomb through the SAME registry DefuserViews as the Defuser, but the
+ * spectator must have ZERO interaction rights (read-only is also enforced
+ * server-side — `moduleHandlers` refuses any non-Defuser actor — so this is UX
+ * correctness: no dead clicks, no server-rejected MODULE_INTERACT noise).
+ *
+ * Rather than thread a `readOnly` prop through all ~12 DefuserViews, the two
+ * gesture chokepoints below read this module-level flag, which the active
+ * `BombScene` sets from its `readOnly` prop. A client renders exactly ONE
+ * BombScene at a time — a Defuser's interactive bomb OR a spectator's lounge
+ * bomb, never both — so a single flag is unambiguous. The helpers also accept an
+ * explicit `{ readOnly }` option (used by unit tests and any caller that wants to
+ * override the ambient flag); the option wins when provided, else the flag applies.
+ */
+let interactionReadOnly = false;
+
+/** Set by the active BombScene from its `readOnly` prop. Defaults false (Defuser). */
+export function setModuleInteractionReadOnly(value: boolean): void {
+  interactionReadOnly = value;
+}
+
+/** Current ambient read-only state (mainly for assertions). */
+export function isModuleInteractionReadOnly(): boolean {
+  return interactionReadOnly;
+}
+
+interface InteractionOptions {
+  /** Override the ambient read-only flag. When true, gestures swallow the event
+   *  (stopPropagation) but never fire their action callback. */
+  readOnly?: boolean;
+}
+
 interface PointerCaptureTarget {
   setPointerCapture?: (pointerId: number) => void;
   releasePointerCapture?: (pointerId: number) => void;
 }
 
 /** Single-click gesture (wire cut, keypad symbol, maze cell, Morse TX…). */
-export function moduleClickHandlers(onActivate: () => void): {
+export function moduleClickHandlers(
+  onActivate: () => void,
+  opts?: InteractionOptions,
+): {
   onClick: (event: ModulePointerEvent) => void;
 } {
   return {
     onClick: (event) => {
       // Swallow unconditionally: the module surface owns its pointer events
-      // (a right-click on a wire must not bubble anywhere either).
+      // (a right-click on a wire must not bubble anywhere either). Story 9.4: a
+      // read-only lounge bomb still swallows (nothing bubbles to camera-focus)
+      // but never dispatches the action.
       event.stopPropagation();
+      if (opts?.readOnly ?? interactionReadOnly) return;
       if (!isPrimaryActivation(event.button, event.delta)) return;
       onActivate();
     },
@@ -77,13 +116,18 @@ export function moduleClickHandlers(onActivate: () => void): {
 export function modulePressHoldHandlers(
   onPress: () => void,
   onRelease: () => void,
+  opts?: InteractionOptions,
 ): {
   onPointerDown: (event: ModulePointerEvent) => void;
   onPointerUp: (event: ModulePointerEvent) => void;
   onPointerCancel: (event: ModulePointerEvent) => void;
 } {
+  const readOnly = () => (opts?.readOnly ?? interactionReadOnly);
   const release = (event: ModulePointerEvent) => {
     event.stopPropagation();
+    // Read-only (Story 9.4): swallow + free any capture, but never fire onRelease
+    // (no onPress fired either, so there is no held state to end).
+    if (readOnly()) return;
     if (event.pointerId !== undefined) {
       (event.target as PointerCaptureTarget | undefined)?.releasePointerCapture?.(event.pointerId);
     }
@@ -92,6 +136,7 @@ export function modulePressHoldHandlers(
   return {
     onPointerDown: (event) => {
       event.stopPropagation();
+      if (readOnly()) return; // no capture, no onPress on a read-only bomb
       if (event.button !== 0) return;
       if (event.pointerId !== undefined) {
         (event.target as PointerCaptureTarget | undefined)?.setPointerCapture?.(event.pointerId);

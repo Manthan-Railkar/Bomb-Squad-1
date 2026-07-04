@@ -1,0 +1,311 @@
+---
+baseline_commit: fb0a061
+---
+
+# Story 9.4: Spectator Lounge View
+
+Status: review
+
+<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+
+## Story
+
+As a Spectator,
+I want a composed lounge screen showing the active team's bomb and the Expert's current manual page,
+so that I can follow exactly what the team is working on and decide when to spend a lifeline.
+
+> **Depends on Story 8.11** (single active bomb — one live bomb, one watching audience), **Story 5.2** (the manual viewer + the `EXPERT_MANUAL_POSITION` broadcast this story consumes), **Story 3.3/3.7** (lounge voice — already shipped; this story surfaces it, does not build it), and **Story 9.3** (the self-contained `LifelinePanel` this story re-hosts into the lounge HUD). All are `done`/`review`. This is the canonical surface a genuine Spectator **and a resting-team player** use while watching the active team.
+
+## Context: what already exists vs. what this story builds
+
+**The single biggest realization from analysis: the plumbing is ~half-built and half-missing, and the missing half is server-side.** Do NOT assume this is a pure client-composition story.
+
+**Already exists — REUSE, do not rebuild:**
+- **Manual-position broadcast (drives the multiview):** `EXPERT_MANUAL_POSITION` (server→client, payload `{ chapterId, playerId }`) is emitted **session-wide** on every Expert navigation (`manualHandlers.ts:102`, to `sessionRoom`). The `playerId` field (added by Story 5.2 for 9.4) is exactly what lets the lounge **accumulate a position per Expert** for the multiview. Spectators already RECEIVE this event (they are in `sessionRoom`) — **the client just never listens to it.** No new manual EVENT is needed; the multiview is built by keying incoming frames by `playerId` on the client, plus a per-Expert *persistence* change on the server (Task 2) so a mid-round joiner can be replayed every Expert's page.
+- **Bomb renderer (Epic 4):** `BombStage` → `BombScene` → `ModuleBay` → registry `DefuserView` + `CameraRig` + `TimerLcd` + `StrikeIndicator` + `ChassisFeatures` — a complete, tested live bomb scene driven entirely by the `gameStore.bomb`/`timer` slots.
+- **Manual viewer (Story 5.2):** `ManualViewer` already supports a locked/read-only chapter subset via the 9.1 `assignedChapterIds` prop — the pattern to extend for follow-only mirroring.
+- **Lifeline affordance (Story 9.3):** `LifelinePanel` is self-contained and self-hiding (renders only when `spectatorLifelines` on AND viewer holds ≥1 token); 9.3 explicitly built it to be **re-hosted by 9.4**.
+- **Lounge voice (Story 3.3/3.7):** `VoiceController`, `SpeakerIndicator`, `MuteControl` are already mounted in `ActiveRound`'s outer wrapper and already route a spectator/resting player to the `spectator-lounge:{sessionId}` LiveKit room. **The voice HUD is already present on the spectator's screen** — see Voice section below for the important 3.7 caveat.
+
+**MISSING — this story's real work:**
+1. **The active team's bomb stream never reaches spectators.** `BOMB_INIT`, `MODULE_UPDATE`, `TIMER_UPDATE`, `STRIKE`, and the resolution events all emit to `teamRoom(sessionId, teamId)` **only** (`moduleHandlers.ts:202,234`, `sessionHandlers.ts:1649,1660`, `resolveRound.ts`, `escalateOnStrike.ts:69`, `pauseTimers.ts`). Spectators (no `teamId`) and resting-team players (their `teamId !== activeTeamId`) are **never joined to the active team's room** (`sessionHandlers.ts:1632-1633` gates the join on `teamId !== undefined`, and even then it's the player's OWN team). **A spectator's `gameStore.bomb` stays `null` all round.** → **Task 1 + Task 2.**
+2. **No client listener for `EXPERT_MANUAL_POSITION`, no store field, no follow-only render.** → **Task 4.**
+3. **No read-only bomb path.** Interaction (`dispatchModuleAction`) and camera-focus (`ModuleBay` faceplate `onClick` → `uiStore.setActiveModuleIndex`, `CameraRig` focus machinery) are hardcoded with **no `readOnly` guard**. → **Task 3.**
+4. **No split-pane lounge component.** The spectator branch is a bare text placeholder (`ActiveRound.tsx:123-139`, `WATCHING_THE_BOMB_ROOM`); the code comment explicitly defers the split-pane to "Story 9.4". → **Task 5.**
+5. **No per-Expert manual position, and no replay to a late-joining spectator.** The server persists a SINGLE `manualPositionKey` (`manualHandlers.ts:95-101`, last-write-wins across all Experts) and never reads it back. The multiview needs a **per-Expert** position map persisted AND replayed on join — otherwise a mid-round joiner sees empty panes until each Expert next navigates. → **Task 2.**
+
+## Acceptance Criteria
+
+1. **Split-pane: read-only bomb + read-only manual multiview.** During an active round, a Spectator's Lounge renders a **split-pane** — the active team's **read-only** bomb scene (the Epic 4 renderer, reused) on one side and the **read-only** Expert manual multiview (AC-2) on the other. The bomb has **no module interaction** and **no Defuser camera-focus controls**. Per the mockup (`5. Spectator Lounge.html`): left pane ~60%, right pane ~40%, a top bar with a lounge/voice indicator + the lifeline affordance.
+
+2. **Manual side = a read-only MULTIVIEW, one pane per active-team Expert (follow-only, not free-navigate).** GDD A3 is **RESOLVED: locked**. The manual region shows **one read-only pane per Expert on the active team**, each mirroring THAT Expert's current chapter/page and headed with the Expert's name. When an Expert changes chapter/page, only that Expert's pane updates. The spectator **cannot navigate any of them** (read-only, follow-only — no clickable sidebar, no `/` search, no arrows, no writes to the Expert position). **Jay's decision 2026-07-03: a multiview of each Expert — NOT a single pane that follows the most-recently-navigated Expert.**
+
+3. **Multiview scales with Expert count; each pane is independent.** One Expert → one pane (the region is effectively the single mockup pane). Two or three Experts (e.g. Asymmetric Expert Roles on, where each holds a *different, disjoint* chapter set) → one labeled pane each, all visible at once, each independently following its own Expert. An Expert who has not opened the manual yet shows a "hasn't opened the manual" placeholder in their pane (never blank-crashes). Panes are keyed by durable Expert `playerId` and ordered stably (e.g. by display name) so they don't reshuffle as Experts navigate.
+
+3b. **Layout — RESOLVED by Jay via UX pass (2026-07-03): STACKED CARDS.** The right region is a **vertical stack of per-Expert manual cards** — full-width page slices, FULL-SIZE manual text, per-card scroll, header "{Expert name} · Ch.{n} {title} · 🔒", dashed "Hasn't opened the manual" placeholder. Chosen interactively over side-by-side columns (illegible at 3 Experts) and focus+filmstrip (one readable page at a time). **Visual spec: `mockups/5b. Lounge Manual Multiview.html`** (variant A decided; B/C kept as the rejected record); normative spine: EXPERIENCE.md IA §4 (updated same day).
+
+4. **Each pane is driven by the Expert-position broadcasts; the spectator never controls navigation.** The Expert manual viewer (Story 5.2) broadcasts each Expert's current position via the typed `EXPERT_MANUAL_POSITION { chapterId, playerId }` event (**this already exists**); the lounge **accumulates the latest position per `playerId`** and drives each Expert's pane from it. A spectator who enters the lounge mid-round (fresh join or reconnect) sees **every** active-team Expert's current position immediately (the server replays the persisted per-Expert positions to them) — not blank panes. **NOTE the server change this forces:** the position is persisted per-Expert now, not as a single last-write-wins key (see Task 2).
+
+5. **Read-only bomb updates from the active team's snapshot; zero interaction rights.** When a `MODULE_UPDATE` broadcasts for the active team's bomb (`session:{id}:team:{teamId}`), the spectator's read-only bomb view updates. Timer, strikes, and resolution likewise mirror the active team. The spectator is **never** granted interaction rights (already enforced server-side: `moduleHandlers.ts:130-138` refuses any actor who is not the active team's committed Defuser — the client read-only-ness is defense-in-depth on top of an authoritative gate).
+
+6. **Lifeline affordance present in the lounge HUD.** If lifelines are enabled AND the viewer holds a token, the Story 9.3 lifeline affordance (`LifelinePanel`) is present in the lounge HUD; if lifelines are disabled or the viewer holds no token, it is hidden. (The self-contained `LifelinePanel` is simply re-hosted here.)
+
+7. **Voice: the lounge audio surface is present; the spectator cannot publish into a Bomb Room.** The spectator hears the active Bomb Room via the lounge (Story 3.3/3.7) and can **never** publish audio into a Bomb Room. **See the Voice section for a spec reconciliation: Story 3.7 shipped a *bidirectional* lounge (spectators CAN talk to each other in the lounge, hearing the Bomb Room via a server bridge bot), which supersedes EXPERIENCE.md's literal "listen-only, cannot speak" wording.** The existing voice HUD already satisfies the audio plumbing; this story only surfaces it in the lounge layout. **Flagged for Jay (Design Decision 5).**
+
+## Tasks / Subtasks
+
+<!-- NOT a module story: no reducer / generate / solve — the "Module reducer defect-class
+     checklist" (project-context.md → Module System) does not apply literally. Its SPIRIT is
+     speced below: read-only is enforced SERVER-SIDE (moduleHandlers refuses non-defuser actors)
+     and the client read-only path is defense-in-depth; the lounge bomb-stream delivery is
+     fail-safe (a spectator who misses the initial snapshot renders nothing, never a crash);
+     the manual-position replay is fail-open (no stored position → blank pane, never a throw).
+     Design Decisions 1–5 carry AFK-defaults pending Jay's confirmation — re-confirm before dev. -->
+
+- [x] **Task 1 — Server: the lounge socket room + audience membership** (AC: 1, 5) — **Design Decision 1**
+  - [x] Add a `loungeRoom(sessionId)` room-name helper beside `teamRoom`/`sessionRoom` in `sessionHandlers.ts:136-141` → `session:${sessionId}:lounge`. **This is a Socket.IO room, distinct from the LiveKit `spectator-lounge:{sessionId}` voice room** (different plane; do not conflate). It is ALSO distinct from `teamRoom` — keeping it separate is what preserves Story 9.3's `LIFELINE_TOAST` targeting (the toast must reach only the Bomb Room = `teamRoom`, never the spectator/sender; see Regression Guards).
+  - [x] **Define the lounge audience = every roster socket that is NOT on the active team** during a live round: genuine spectators (`role === 'spectator'`, no `teamId`) AND resting-team players (`teamId !== undefined && teamId !== activeTeamId`, any role) AND **the facilitator** (Jay's decision 2026-07-03 — the facilitator watches the active bomb too; DD4). Predicate: a socket is a lounge member iff it is NOT a member of the active team (i.e. `teamId !== activeTeamId`, which naturally includes the teamless facilitator and genuine spectators). NOTE this is a SUPERSET of the 9.2 lifeline-earner set — the facilitator watches but never earns/holds tokens, so its lounge HUD shows no counter and no `LifelinePanel` (both self-gate on non-facilitator / tokens>0; see Task 5).
+  - [x] Join the lounge audience to `loungeRoom` in the **ROUND_START `fetchSockets` loop** (`sessionHandlers.ts:1628-1634`) — extend the existing loop so a socket joins `teamRoom` when on a team AND `loungeRoom` when it is a lounge-audience member (resting player joins BOTH its own idle team room and the lounge; a genuine spectator joins only the lounge). Also join in the **mid-round reattach replay** (`sessionHandlers.ts:~537-591`) so a reconnecting spectator/resting player re-enters the lounge room.
+  - [x] **Leave/refresh on transitions:** on ROUND_START the audience is recomputed for the new active team, so a socket that was resting last round and now plays must be OUT of the lounge and IN its team room (and vice-versa). Simplest correct posture: at ROUND_START, before re-joining, have each roster socket `leave(loungeRoom(sessionId))` then re-join per the recomputed audience (mirror how team rooms are (re)joined). Also handle round resolution / `cancelPreparation` / `endSession` teardown consistent with how team rooms are left today (audit `resolveRound.ts` / `cancelPreparation.ts` / `endSession.ts` — if they don't explicitly leave team rooms, socket.io auto-cleans on disconnect and the next ROUND_START recomputes, which is acceptable for v1; document the choice).
+  - [x] Tests: integration (`testSocketServer`) — at ROUND_START with an active team A + a genuine spectator + a resting Team-B player, both the spectator and the Team-B player are members of `loungeRoom`; a Team-A Defuser/Expert is NOT; the facilitator is NOT (per DD4). On the next round (B active), membership flips.
+
+- [x] **Task 2 — Server: deliver the active team's bomb stream + manual position to the lounge** (AC: 4, 5) — **Design Decision 1**
+  - [x] **Dual-target the active team's bomb-stream emits** to `[teamRoom(sessionId, teamId), loungeRoom(sessionId)]`. Add a tiny helper `bombAudience(sessionId, teamId)` returning both room names, and use it at EVERY bomb-stream emit site (during a live round `teamId === activeTeamId`, so the lounge only ever sees the active bomb): `MODULE_UPDATE` + `STRIKE` (`moduleHandlers.ts:202,234`), `STRIKE` (`escalateOnStrike.ts:69`), `TIMER_UPDATE` (`pauseTimers.ts:45,70`; `sessionHandlers.ts:1649`), `BOMB_INIT` (`sessionHandlers.ts:1660`), and the resolution `BOMB_DEFUSED`/`BOMB_EXPLODED` (`resolveRound.ts`). **DO NOT dual-target `LIFELINE_TOAST`** (`lifelineHandlers.ts`) — it stays `teamRoom`-only (Regression Guard R1).
+  - [x] **Deliver the initial `BOMB_INIT` to spectators who join after ROUND_START.** ROUND_START now dual-targets `BOMB_INIT`, so a spectator present at round start gets it. For a spectator who **joins/reconnects mid-round**, extend the reattach/late-join path to send the active team's persisted `BOMB_INIT` (from `bombKey(sessionId, activeTeamId)`) + latest `TIMER_UPDATE` (from `timerKey`) to that socket, mirroring how the Defuser reattach replay works (`sessionHandlers.ts:~512-549`). **Required because `applyModuleUpdate` drops updates when `gameStore.bomb === null`** (`gameStore.ts:176-178`) — without an initial snapshot the mirror never starts.
+  - [x] **Persist manual position PER-EXPERT (multiview), not last-write-wins.** Change `manualHandlers.ts:95-101` (Story 5.2's write) from `setJSON(manualPositionKey, { chapterId, playerId })` to a **merge** into a per-Expert map — `redis.updateJSON` (CAS): load the map (null ⇒ `{}`), set `map[playerId] = chapterId`, commit. Keep the per-nav broadcast `EXPERT_MANUAL_POSITION { chapterId, playerId }` UNCHANGED (the client accumulates by `playerId`). Update the `manualPositionKey` doc (`keys.ts:21-28`) to describe the map shape `Record<playerId, chapterId>`. Nothing else reads this key today, so the shape change is contained. **Clear the map at ROUND_START** (delete `manualPositionKey`) so last round's pages don't replay into a new round; the client also resets on `setBomb`.
+  - [x] **Replay every active-team Expert's position to a joining spectator (AC-4).** On lounge entry (ROUND_START for present spectators + the mid-round reattach path), read the per-Expert map and `socket.emit('EXPERT_MANUAL_POSITION', { chapterId, playerId })` **once per entry** to that socket, so every Expert's pane fills immediately. Fail-open: empty/absent map ⇒ emit nothing (placeholder panes until first nav), never throw. (First server-side READ of `manualPositionKey`, until now write-only.) Stale entries for a departed Expert are harmless — the client filters panes to the CURRENT active-team Expert roster.
+  - [x] Wrap the new emits in the existing try/catch posture; a lounge-delivery hiccup must never bubble into the ROUND_START catch that cancels timers (same fail-safe rule Story 9.1 followed for chapter delivery).
+  - [x] Tests: integration — a lounge spectator present at ROUND_START receives `BOMB_INIT` + `TIMER_UPDATE`; after a Team-A Defuser cuts a wire, the spectator receives the same `MODULE_UPDATE` the Defuser's team room got; a `STRIKE` reaches the lounge; with two Experts each having navigated, a mid-round-joining spectator receives the persisted `BOMB_INIT` + **one `EXPERT_MANUAL_POSITION` per Expert** (both stored positions replayed); the per-Expert map merges (Expert A's nav does not clobber Expert B's entry) and clears at the next ROUND_START. **Regression: the Team-A Defuser and Expert still receive exactly what they did before; a `LIFELINE_TOAST` still reaches ONLY the team room, not the lounge** (assert the spectator does NOT receive it); update any Story-5.2 `manualHandlers` test that asserted the old single-object `manualPositionKey` shape.
+
+- [x] **Task 3 — Client: read-only bomb scene** (AC: 1, 5) — **Design Decision 2**
+  - [x] Add a `readOnly?: boolean` prop to `BombScene` (`scenes/BombScene.tsx:125-136`) that propagates to `ModuleBay` and `CameraRig`. Default `false` (Defuser path unchanged).
+  - [x] **Kill module interaction at the two chokepoints, not in 12 files.** Every module routes clicks through `moduleClickHandlers` / `modulePressHoldHandlers` (`modules/interaction.ts:47,77`); every `DefuserView` calls them. Add `readOnly` to `ModuleDefuserViewProps` (`modules/registry.ts:13-20`, currently only `moduleIndex`) and have each `DefuserView` forward it into those helpers, which **return no-op handlers when `readOnly`** (they still `stopPropagation` so nothing bubbles, but never call `onActivate`/`dispatchModuleAction`). Thread `readOnly` from `ModuleBay` (`ModuleBay.tsx:203`) into `<Renderer.DefuserView readOnly={readOnly} moduleIndex={…} />`. This neutralizes all 11 real modules' interaction via two functions. *(If forwarding to 12 DefuserViews is judged too broad for v1, the lighter fallback is: rely on the server's `NOT_TEAM_DEFUSER` refusal + skip only the camera-focus below — but then a spectator click still emits a server-rejected `MODULE_INTERACT`. Prefer the full no-op; confirm scope with Jay via DD2.)*
+  - [x] **Disable Defuser camera-focus controls (AC-1 "no Defuser camera-focus controls").** When `readOnly`: `ModuleBay` omits the faceplate `onClick` that calls `setActiveModuleIndex` (`ModuleBay.tsx:113,142`); `CameraRig` omits the focus machinery — the `activeModuleIndex` subscription + focus dolly + ESC-to-overview listener (`BombScene.tsx:57-115`). **Orbit/zoom (left-drag ROTATE, wheel DOLLY) MAY remain** so a spectator can look around — that is not a "focus control." (The mockup shows a static scaled overview; locking the camera to `OVERVIEW_POSITION` with no controls is also acceptable — pick one and note it; default: keep orbit/zoom, drop focus.)
+  - [x] Tests: `interaction.ts` unit — `moduleClickHandlers(cb, { readOnly: true })` never calls `cb`, still `stopPropagation`s (extend the existing interaction tests). Component/jsdom — a read-only `ModuleBay` renders no faceplate focus handler. (R3F visual is e2e, Task 7.)
+
+- [x] **Task 4 — Client: accumulate per-Expert positions + follow-only manual pane** (AC: 2, 3, 4)
+  - [x] Add `expertManualPositions: Record<string, string>` (playerId → chapterId; default `{}`) + a `setExpertManualPosition({ chapterId, playerId })` action that **merges** (`{ ...prev, [playerId]: chapterId }`) to `gameStore`. Reset to `{}` in `clearSession` AND in `setBomb` (new round — `gameStore.ts:168`, same posture as `assignedChapterIds`/`lifelineToasts`), so stale panes never bleed across rounds.
+  - [x] Register `socket.on('EXPERT_MANUAL_POSITION', setExpertManualPosition)` in `bindServerEvents.ts` beside the existing `EXPERT_CHAPTER_ASSIGNMENT` registration (`bindServerEvents.ts:87-95,142`) + matching `off` in teardown. Each frame updates exactly one Expert's entry (keyed by `playerId`). No round-staleness guard needed (position is inherently current); the `setBomb` reset covers the new-round boundary.
+  - [x] Extend `ManualViewer` (`manual/ManualViewer.tsx:41`) with a `followChapterId?: string | null` (+ implied read-only) mode: when non-null it (a) forces the displayed chapter to `followChapterId`, (b) hides/disables the sidebar navigation, `/` search, and arrow/prev-next, and (c) ignores the local `uiStore.manualChapterId` (the spectator has no own position, and must NOT write one via `publishManualPosition`). Absent/`null` ⇒ existing Expert behavior UNCHANGED (regression-critical — this is the live Expert viewer). Follow the 9.1 precedent (`assignedChapterIds` added a gating prop without disturbing the default path). Resolve `followChapterId` against the full real chapter list; an unknown/absent id renders a "waiting for the Expert…" placeholder (fail-open, never a crash). **Each pane in the multiview (Task 5) is one `ManualViewer` in this follow-mode.**
+  - [x] Tests: store — `setExpertManualPosition` merges per-`playerId` (two Experts → two entries; a repeat for one Expert overwrites only that entry); `setBomb`/`clearSession` reset to `{}`. `bindServerEvents` — an `EXPERT_MANUAL_POSITION` frame updates the right Expert's entry (jsdom). `ManualViewer` follow-mode — given `followChapterId`, shows exactly that chapter, renders no clickable sidebar/search/arrows, and never calls `publishManualPosition`; a second frame with a different id re-points the pane; `null`/omitted = full Expert manual (regression).
+
+- [x] **Task 5 — Client: the `SpectatorLounge` split-pane component + mount** (AC: 1, 2, 6, 7) — **Design Decision 4**
+  - [x] New `apps/client/src/ui/SpectatorLounge.tsx` composing the mockup (`5. Spectator Lounge.html`, reworked for the multiview): a top bar (lounge/voice indicator on the left, token counter + `LifelinePanel` "Send Tip" on the right) over a **split** grid `grid-template-columns: 60fr 40fr` (`min-h-0` so panes size correctly): **left** = read-only bomb (`<BombStage><BombScene readOnly /></BombStage>`) with a "Watching · Team {name}" tag + "Read-only" chip; **right** = the **Expert multiview** (AC-2/3, DD3b): derive the active-team Experts from the roster — `Object.values(session.players).filter(p => p.role === 'expert' && p.teamId === session.activeTeamId)`, ordered stably (by `displayName`) — and render one read-only **follow pane per Expert**: `<ManualViewer followChapterId={expertManualPositions[expert.playerId] ?? null} />`, each headed "{expert.displayName} · Ch.{n} {title}" (fail-soft to a generic "Expert" if a name is absent; never leak the raw playerId). An Expert with no entry yet shows the "hasn't opened the manual" placeholder. Read `expertManualPositions`, the roster, and the active team name reactively. **Layout: vertical stack of independently-scrollable Expert cards per `mockups/5b. Lounge Manual Multiview.html`** (DD3b, Jay-confirmed 2026-07-03 — full-size manual text, per-card scroll, dashed placeholder card). Use existing design tokens only (`--color-surface`/`-raised`/`-manual`, `--font-mono`/`-display`/`-manual`, brass/cream) — **no new colors** (DESIGN.md "no fourth surface": the lounge is a composition of the existing bomb + manual surfaces).
+  - [x] Re-host the lifeline affordance: mount `<LifelinePanel />` inside the lounge top bar and render the token counter there (reuse `LIFELINE_TOKENS_LABEL` / the `lifelineCounter` pattern from `ActiveRound.tsx:81-88`). **Gate both on the earner predicate** (`role !== 'facilitator'` AND `spectatorLifelines` on) so the **facilitator's** lounge shows NEITHER a counter nor a Send-Tip button (the facilitator watches but never earns/spends — `LifelinePanel` already self-hides at 0 tokens, but suppress the counter explicitly too). **Remove** the now-duplicated `LifelinePanel`/counter from the placeholder branches you replace so nothing is mounted twice.
+  - [x] Mount in `ActiveRound.tsx`: replace the **resting-team** branch body (`ActiveRound.tsx:91-105`), the **spectator** case, AND the **facilitator** case of the fallback (`ActiveRound.tsx:123-139`) with `<SpectatorLounge />` (DD4 — the facilitator watches too). The only remaining fallback text is the teamless-bomb-role edge case (`role` defuser/expert with no `teamId` — a between-rounds joiner who can never be teamed; keep it on `ROUND_IN_PROGRESS`). Leave the outer-wrapper overlays (`ResolutionBanner`, `PauseOverlay`, `SpeakerIndicator`, `MuteControl`, `VoiceController`, `LifelineToastHost`) untouched — they already float above whatever `surface` renders, so the lounge inherits the voice HUD (AC-7) and pause/resolution overlays for free.
+  - [x] **Facilitator note:** the facilitator has no `teamId`, so `isResting` is false; route it explicitly (`role === 'facilitator'` → `<SpectatorLounge />`). The facilitator is already in the lounge voice room (`scope.ts` spectator OR facilitator → `spectator-lounge`), so the voice HUD is consistent. (If a dedicated in-round Facilitator Dashboard ships later from mockup `6. Facilitator Dashboard.html`, it supersedes this mount — out of scope for 9.4.)
+  - [x] **Voice indicator (AC-7, DD5):** in the top bar, render a lounge/voice status pill. **Do NOT hardcode a literal "Listen-only" pill** — Story 3.7 made the lounge bidirectional, so that label would be false. Default: a neutral "Spectator Lounge" / "In the lounge" pill; rely on the already-mounted `SpeakerIndicator` (who's talking) + `MuteControl` (self-mute, publisher-only) for live voice state. Confirm with Jay (DD5).
+  - [x] Tests: jsdom — with `role === 'spectator'`, a **resting player**, OR the **facilitator** during an active round, `ActiveRound` renders `SpectatorLounge` (split-pane present: a bomb container + the Expert multiview); the token counter/`LifelinePanel` appear only for a non-facilitator earner when `spectatorLifelines` on AND tokens > 0, and are **absent for the facilitator** even with lifelines on. **Multiview:** with 2 active-team Experts, `SpectatorLounge` renders 2 labeled Expert panes; each follows its own `expertManualPositions[playerId]` (Expert A on Ch.3, Expert B on Ch.8 → two panes showing those chapters); an Expert with no position shows the placeholder; a resting/spectator player is NOT rendered as a pane. Single Expert → one pane. The teamless-bomb-role edge case still gets the plain `ROUND_IN_PROGRESS` text.
+
+- [x] **Task 6 — Voice reconciliation + surfacing** (AC: 7) — **Design Decision 5** (mostly verification)
+  - [x] No voice PLUMBING work — Story 3.7 already routes a spectator/resting player to `spectator-lounge:{sessionId}` and bridges Bomb Room → Lounge audio. Confirm the existing `VoiceController`/`SpeakerIndicator`/`MuteControl` overlays behave correctly on the lounge surface (they mount in the ActiveRound wrapper regardless of `surface`).
+  - [x] Reconcile the AC-7 wording with the shipped 3.7 bidirectional lounge (see Voice section). Structurally, a spectator can **never** publish into a Bomb Room (the LiveKit room boundary guarantees it — `scope.ts`); "listen-only" now means exactly that. Document the resolution in Completion Notes; surface the neutral lounge indicator from Task 5.
+
+- [x] **Task 7 — Tests + typecheck + e2e + regression sweep** (AC: 1–7)
+  - [x] `pnpm -w typecheck` clean (no `@ts-ignore`); full shared + server + client suites green.
+  - [x] **Regression (critical):** the Defuser's live bomb is UNCHANGED (readOnly defaults false); the Expert's manual is UNCHANGED (followChapterId absent); `LIFELINE_TOAST` still team-room-only; `manualHandlers`, `moduleHandlers`, `resolveRound`, `sessionHandlers` ROUND_START, `ActiveRound`, `ManualViewer`, `gameStore`, `bindServerEvents` existing tests all green.
+  - [x] **e2e (real browsers ↔ in-process server, TD-6 harness `apps/client/e2e/`):** a Facilitator hosts a session with an active Team A (Defuser + **two Experts**) and a genuine Spectator (and/or a resting Team B). Assert: **(1)** the Spectator sees the split-pane lounge — a bomb scene + the Expert multiview (AC-1); **(2)** when Team A's Defuser cuts a wire / earns a strike, the Spectator's read-only bomb updates (AC-5); **(3)** the Spectator cannot interact with the bomb (a click on a module changes nothing / emits no accepted action) and has no camera-focus (AC-1/5); **(4)** the Spectator sees **one pane per Expert**; when Expert A navigates to one chapter and Expert B to another, each pane shows its own Expert's chapter and only that pane moves; the Spectator cannot navigate any pane (AC-2/3/4 multiview); **(5)** a Spectator who reloads mid-round re-enters the lounge with the current bomb + **both** Experts' current pages (AC-4 per-Expert replay); **(6)** with lifelines on and a held token, the "Send Tip" affordance shows in the lounge HUD (AC-6). Follow the 9.1 e2e spec shape (`asymmetric-expert-roles.spec.ts`).
+  - [ ] **Human verification (Jay)** [[human-verification-ac-rule]]: on the full Docker stack with the TD-5 bot swarm — as a Spectator during a live round, confirm: (a) the split-pane bomb (read-only, no clicks, no focus) + manual page are both visible; (b) the bomb updates as the team plays (a solve LED flips, a strike lands, the timer counts down); (c) the manual side shows one pane PER active-team Expert, each following its own Expert's page, none navigable by the spectator; with ≥2 Experts, all their pages are visible at once (a multiview), each updating independently; (d) reloading mid-round re-shows the current bomb + every Expert's current page; (e) with lifelines on + a token, "Send Tip" is present and sends (and the toast lands on the Defuser/Expert, NOT on the spectator — 9.3 regression); (f) voice: the spectator hears the Bomb Room and cannot talk into it. Record the observed result in Completion Notes — not done until Jay confirms.
+
+## Dev Notes
+
+### The multiview: the broadcast wire is done; the client accumulation + per-Expert persistence are the work
+
+`EXPERT_MANUAL_POSITION { chapterId, playerId }` is emitted **session-wide** on every Expert nav (`manualHandlers.ts:102`, `io.to(sessionRoom(sessionId))`). Spectators are in `sessionRoom` (`sessionHandlers.ts:445`), so they already receive it — the client simply has no `socket.on('EXPERT_MANUAL_POSITION', …)` and no store field (confirmed: `bindServerEvents.ts` registers `EXPERT_CHAPTER_ASSIGNMENT` but not the position). The `playerId` on the payload is exactly what the multiview keys on — the client keeps `Record<playerId, chapterId>` and updates one Expert's entry per frame. TWO server-side gaps remain for AC-2/3/4: (1) the position is persisted as a **single** last-write-wins `manualPositionKey`, so it must become a **per-Expert map** (Task 2) to survive a mid-round join for every Expert; (2) the key is write-only today (nothing reads it) — Task 2 adds the **replay on join** that emits every stored per-Expert position to the new spectator. Live navigation already flows to spectators with zero server change (they're in `sessionRoom`); only the persistence/replay needs the per-Expert rework.
+
+### Position granularity is CHAPTER, not page — do not invent a page index
+
+Across the whole system the Expert "position" is a single **chapter id** (kebab-case; chapter id === module id). The manual's "pages" are a vertical scroll WITHIN a chapter, with no per-page navigation state (scroll offset is a presentation-only `useRef`, never in a store). `ManualPositionPayload` / `ExpertManualPositionPayload` carry `chapterId` only. So "mirrors the Expert's current chapter/page" = mirror the **chapter**. Do not add a page/scroll sub-position — it would be a new cross-cutting concept the Expert viewer doesn't even track.
+
+### Read-only is enforced server-side already — the client guard is defense-in-depth
+
+`moduleHandlers.ts:130-138` refuses any `MODULE_INTERACT` whose actor is not the active team's **committed Defuser** (`self.role !== 'defuser' || self.teamId !== teamId` → `NOT_TEAM_DEFUSER`). A spectator physically cannot mutate the bomb even if the client wired a click. So the Task-3 client read-only is about **UX correctness** (no dead clicks, no focus jumps, no rejected-action noise), not security. This is why the lighter fallback (skip only camera-focus, accept a server-rejected click) is *safe* though not *clean* — flagged in DD2.
+
+### Why a SEPARATE lounge room, not "join spectators to the team room"
+
+The obvious shortcut — add spectators to `teamRoom(activeTeamId)` so they get the bomb stream — **regresses Story 9.3**. 9.3 emits `LIFELINE_TOAST` to `teamRoom(sessionId, activeTeamId)` **relying on the spectator/sender NOT being in that room** (its AC: "the sender never sees their own toast"; "to the Defuser and Experts"). Putting spectators in the team room would show them (and the sender) the toast, and would count them as Bomb Room members. A dedicated `loungeRoom` that receives a **dual-targeted copy** of the bomb stream keeps `teamRoom` pure for 9.3 while giving the lounge everything it needs. This is the crux design decision (DD1) — the cost is touching ~7 bomb-stream emit sites, but each is a one-line room-list change via a `bombAudience()` helper.
+
+### The client already applies whatever bomb events it receives — no team filter to fight
+
+`applyModuleUpdate`/`setBomb` do NO team check (`gameStore.ts:168,174`); the client scopes to "its own team's bomb" purely via server room membership. So once the server dual-targets the lounge, the existing client store code applies the active team's snapshot with zero client changes — **except** that `applyModuleUpdate` early-returns when `bomb === null` (`gameStore.ts:176-178`), which is exactly why Task 2 must send the initial `BOMB_INIT` to the lounge (present-at-start via the dual-target, mid-round-join via the reattach replay).
+
+### Voice — the shipped reality diverges from EXPERIENCE.md (READ BEFORE writing AC-7 code)
+
+EXPERIENCE.md Flow 4 and the mockup say the spectator is **listen-only** ("hears the Bomb Room but cannot speak in") and show a "Listen-only" pill. **Story 3.7 (Jay decision 2026-07-01) superseded this:** the lounge is now **bidirectional** — spectators, resting players, and the facilitator are minted `canPublish: true` into `spectator-lounge:{sessionId}` (`packages/shared/src/voice/scope.ts:152-162`), can talk to each other in the lounge, and hear the active Bomb Room via a **server-side bridge bot** (`#bridge-*` identity) that forwards Bomb Room → Lounge one-way. "Listen-only" now means strictly "cannot publish INTO a Bomb Room" — which is structurally guaranteed by the room boundary, not by a client flag. Consequences for this story:
+- The voice HUD (`VoiceController` join CTA, `SpeakerIndicator` pills, `MuteControl` self-mute) is **already present and correct** on the spectator surface — `MuteControl` now DOES show for a lounge spectator (they publish). Do not build voice.
+- **Do not render a literal "Listen-only" pill** — it would misdescribe the shipped behavior. Render a neutral "Spectator Lounge" indicator (DD5). The existing lounge copy (`copy.ts:182-184`: `VOICE_LOUNGE_CONNECTED = 'In the lounge — hearing the Bomb Room.'`) already reflects the shipped model.
+- **Flag for Jay (DD5):** confirm whether AC-7's "cannot publish" is satisfied by the structural Bomb-Room boundary (recommended — matches 3.7), or whether he wants the mockup's literal listen-only lounge (a 3.7 reversal, out of scope here).
+
+### Regression Guards (make these tests explicit)
+
+- **R1 — `LIFELINE_TOAST` stays team-room-only.** Do NOT add `loungeRoom` to the 9.3 toast emit. Test: a spectator in the lounge does NOT receive `LIFELINE_TOAST`; the Defuser + Expert do (9.3's existing assertion, re-run with a lounge member present).
+- **R2 — Defuser bomb unchanged.** `BombScene` with `readOnly` defaulting false keeps every existing Defuser interaction/focus test green.
+- **R3 — Expert manual unchanged.** `ManualViewer` with `followChapterId` absent is byte-for-byte the current Expert viewer (incl. the 9.1 `assignedChapterIds` path).
+- **R4 — round-boundary reset.** `setBomb` clears `expertManualPositions` (like `assignedChapterIds`/`lifelineToasts`) so a new round starts with blank panes until the first nav/replay.
+- **R5 — resting-player double membership.** A resting player is in BOTH its own (idle) `teamRoom` and the `loungeRoom`; ensure the idle team room delivers nothing surprising (it won't — no bomb is active for a resting team under Model B).
+
+### Non-module-story guardrails (defect-class SPIRIT)
+
+- **Fail-safe delivery:** a spectator who misses the initial snapshot renders the empty scene (BombScene tolerates `bomb === null`), never crashes; the manual-position replay is fail-open (no key ⇒ blank pane). No new throw paths.
+- **Never trust the client:** read-only-ness is authoritative server-side (`NOT_TEAM_DEFUSER`); the client guard is UX only.
+- **No `Math.random()`/`Date.now()`** anywhere new; the lounge is presentation over server-authoritative state.
+- **Determinism / performance:** the read-only bomb obeys the same R3F rules as the Defuser bomb — state via Zustand `getState()` in `useFrame`, no React re-render from the loop, dispose on unmount. The lounge adds one more consumer of the same store slots; no new tick-path work.
+
+### Testing standards summary
+
+- Server room membership + dual-target delivery + manual replay — integration via `apps/server/src/handlers/__tests__/testSocketServer.ts` (assert lounge receipt, team-only `LIFELINE_TOAST`, mid-round-join replay). Follow the `sessionHandlers.test.ts` ROUND_START setup and the 9.1/9.3 integration specs.
+- `interaction.ts` read-only no-op — Jest unit (pure, no R3F).
+- Store + `bindServerEvents` + `ManualViewer` follow-mode + `ActiveRound`/`SpectatorLounge` routing — jsdom (TD-1). Fake timers only if needed.
+- Full-AC behavior — Playwright e2e (TD-6, `apps/client/e2e/`), real browsers ↔ real in-process server.
+- Forbidden: `Math.random()`/`Date.now()` in new logic; untyped `socket.emit(string, any)`; a spectator write path to `manualPositionKey`/`MANUAL_NAVIGATE`; dual-targeting `LIFELINE_TOAST`.
+
+### Project Structure Notes
+
+- **New client:** `apps/client/src/ui/SpectatorLounge.tsx` (+ `__tests__`).
+- **Modified shared:** none required (reuse `EXPERT_MANUAL_POSITION`/`MODULE_UPDATE`/`BOMB_INIT`/`TIMER_UPDATE`/`STRIKE`; no new events — a rare "no shared change" story). If a `readOnly` field on `ModuleDefuserViewProps` is placed in shared, keep it there; it's client-registry-local today (`apps/client/src/modules/registry.ts`).
+- **Modified server:** `apps/server/src/handlers/sessionHandlers.ts` (`loungeRoom` helper, audience join/leave in ROUND_START + reattach, dual-target `TIMER_UPDATE`/`BOMB_INIT`, per-Expert manual-position replay, clear `manualPositionKey` at ROUND_START), `manualHandlers.ts` (persist position **per-Expert** — merge map instead of last-write-wins, `manualHandlers.ts:95-101`), `moduleHandlers.ts` (dual-target `MODULE_UPDATE`/`STRIKE`), `escalateOnStrike.ts` + `pauseTimers.ts` (dual-target `STRIKE`/`TIMER_UPDATE`), `resolveRound.ts` (dual-target resolution), `state/keys.ts` (`manualPositionKey` doc → `Record<playerId, chapterId>`), plus a `bombAudience` helper (co-locate with the room helpers).
+- **Modified client:** `apps/client/src/store/gameStore.ts` (`expertManualPositions` map slice + resets), `net/bindServerEvents.ts` (register `EXPERT_MANUAL_POSITION`), `scenes/BombScene.tsx` + `scenes/ModuleBay.tsx` + `modules/interaction.ts` + `modules/registry.ts` (`readOnly` thread), `manual/ManualViewer.tsx` (`followChapterId` follow-mode), `ui/ActiveRound.tsx` (mount `SpectatorLounge` in resting + spectator + facilitator branches; remove the duplicated `LifelinePanel`/counter there), `ui/copy.ts` (lounge-indicator + Expert-pane header strings).
+- **Naming:** component `SpectatorLounge` (PascalCase); room helper `loungeRoom` / `bombAudience` (camelCase, beside `teamRoom`); store field `expertManualPositions` (map) + `setExpertManualPosition` (merges one Expert); prop `readOnly` (bomb) / `followChapterId` (manual). `packages/shared` stays framework-free.
+
+### Project Context Rules
+
+- **Socket/shared types:** reuse existing typed events on both sides; never `socket.emit(string, any)`. The lounge/team rooms are server-only room strings (like `teamRoom`), not shared types.
+- **Server-authoritative + pure boundaries:** the handler owns all I/O (join rooms → dual-target emit → replay from Redis); no reducer emits sockets; Redis-only, no Postgres on this path.
+- **Security / untrusted client:** read-only is enforced by `moduleHandlers`' `NOT_TEAM_DEFUSER` gate; the spectator can neither touch the bomb nor drive the manual (no `MANUAL_NAVIGATE` from the lounge). Never trust a client-claimed role/team — the server routes rooms by roster `role`/`teamId`.
+- **State boundaries:** Redis holds the bomb/timer/manual-position; the lounge reads server-broadcast copies, never a new persistence.
+- **Performance / R3F:** the read-only bomb obeys the 60fps rules (Zustand `getState()` in `useFrame`, no loop re-renders, dispose on unmount); the split-pane is a composition of existing surfaces (DESIGN.md "no fourth surface").
+- **Determinism:** no `Math.random()`/`Date.now()`; presentation over server-authoritative state.
+- **TypeScript:** `tsc --noEmit` clean, no `// @ts-ignore`.
+
+### References
+
+- [Source: _agent_docs/planning-artifacts/epics.md#Story 9.4: Spectator Lounge View] (lines 1454-1492 — user story + BDD ACs; 8.11/3.7 dependency notes)
+- [Source: _agent_docs/planning-artifacts/epics.md] (line 883 — "current position exposed as observable state + typed event so the Spectator Lounge (9.4) can mirror it")
+- [Source: _agent_docs/planning-artifacts/gdds/gdd-Ktane-2026-06-09/gdd.md:494-497] (Spectator controls: read-only manual locked to Expert's page; listen-only)
+- [Source: _agent_docs/planning-artifacts/gdds/gdd-Ktane-2026-06-09/gdd.md:777] (Assumption A3 RESOLVED: spectator manual LOCKED, mirrors most-recently-navigated Expert; requires broadcasting Expert page position)
+- [Source: _agent_docs/planning-artifacts/gdds/gdd-Ktane-2026-06-09/gdd.md:537-543] (Voice channels: Bomb Room vs Spectator Lounge listen-only; speaker indicator; mute)
+- [Source: _agent_docs/planning-artifacts/ux-designs/ux-Ktane-2026-06-10/EXPERIENCE.md:30-38] (IA §4 — Spectator = Spectator Lounge, split-pane Bomb + current manual page)
+- [Source: _agent_docs/planning-artifacts/ux-designs/ux-Ktane-2026-06-10/EXPERIENCE.md:235-249] (Flow 4 — Sam: enter lounge, watch, lifeline; listen-only wording — see 3.7 reconciliation)
+- [Source: _agent_docs/planning-artifacts/ux-designs/ux-Ktane-2026-06-10/mockups/5. Spectator Lounge.html] (visual spec for the top bar + left bomb pane — 60/40 split, token + Send Tip, read-only tag; its single manual sheet is SUPERSEDED by the multiview)
+- [Source: _agent_docs/planning-artifacts/ux-designs/ux-Ktane-2026-06-10/mockups/5b. Lounge Manual Multiview.html] (THE manual-region visual spec — stacked Expert cards, variant A decided 2026-07-03; header/placeholder treatment)
+- [Source: _agent_docs/planning-artifacts/ux-designs/ux-Ktane-2026-06-10/EXPERIENCE.md IA §4] (normative multiview spec — updated 2026-07-03)
+- [Source: _agent_docs/planning-artifacts/ux-designs/ux-Ktane-2026-06-10/DESIGN.md:169] (Operator-world manual paper for Spectator manual pane; "no fourth surface" rule)
+- [Source: packages/shared/src/events/server-to-client.ts:53] (`EXPERT_MANUAL_POSITION` — CONSUME this; already emitted)
+- [Source: packages/shared/src/events/payloads.ts:189-198] (`ExpertManualPositionPayload { chapterId, playerId }` — `playerId` is the multiview key: one pane per Expert)
+- [Source: packages/shared/src/events/payloads.ts:96-105] (`ModuleUpdate { moduleIndex, state }` — team-scoped bomb delta to dual-target)
+- [Source: apps/server/src/handlers/manualHandlers.ts:59-102] (Expert-position relay: role-gated, persists `manualPositionKey`, broadcasts session-wide; MODIFY the persist to a per-Expert MAP merge; the key is write-only today — add the replay READ)
+- [Source: apps/server/src/state/keys.ts:9-13,21-28] (`bombKey`/`timerKey` = `session:{id}:team:{teamId}:*`; `manualPositionKey` = `session:{id}:manualPosition`)
+- [Source: apps/server/src/handlers/sessionHandlers.ts:136-141] (`sessionRoom`/`teamRoom` — add `loungeRoom` here)
+- [Source: apps/server/src/handlers/sessionHandlers.ts:1628-1661] (ROUND_START: `fetchSockets` team-room join loop + `TIMER_UPDATE` + `BOMB_INIT` team-scoped emits — extend for lounge join + dual-target)
+- [Source: apps/server/src/handlers/sessionHandlers.ts:512-591] (reattach mid-round replay — extend for spectator lounge join + snapshot + manual-position replay)
+- [Source: apps/server/src/handlers/moduleHandlers.ts:130-138,202,234] (`NOT_TEAM_DEFUSER` authority gate; `MODULE_UPDATE`/`STRIKE` team-room emits to dual-target)
+- [Source: apps/server/src/round/escalateOnStrike.ts:69, apps/server/src/round/pauseTimers.ts:45,70, apps/server/src/round/resolveRound.ts] (remaining bomb-stream emit sites to dual-target)
+- [Source: apps/server/src/handlers/lifelineHandlers.ts] (Story 9.3 `LIFELINE_TOAST` — MUST stay team-room-only, Regression Guard R1)
+- [Source: apps/client/src/net/bindServerEvents.ts:87-95,129-130,142] (`EXPERT_CHAPTER_ASSIGNMENT` registration model + `MODULE_UPDATE`/`BOMB_INIT` handlers — add `EXPERT_MANUAL_POSITION` beside)
+- [Source: apps/client/src/store/gameStore.ts:41,96,168,174-192] (`bomb`/`timer` slots; `setBomb`/`applyModuleUpdate`; add `expertManualPositions` map slice + resets; note `applyModuleUpdate` drops when `bomb === null`)
+- [Source: apps/client/src/store/uiStore.ts:32-47] (`manualChapterId` = the LOCAL viewer's own position — the spectator must NOT write it; `activeModuleIndex` = camera focus to disable)
+- [Source: apps/client/src/manual/ManualViewer.tsx:41-121] (viewer + the 9.1 `assignedChapterIds` gating precedent — add `followChapterId` follow-mode)
+- [Source: apps/client/src/manual/publishPosition.ts:14-19] (`publishManualPosition` — the Expert write path the spectator must NOT invoke)
+- [Source: apps/client/src/scenes/BombScene.tsx:57-115,125-136] (`CameraRig` focus machinery to gate on `readOnly`; `BombScene` prop surface)
+- [Source: apps/client/src/scenes/ModuleBay.tsx:113,142,203] (faceplate focus `onClick` to drop when `readOnly`; DefuserView mount to thread `readOnly`)
+- [Source: apps/client/src/modules/interaction.ts:47,77] (`moduleClickHandlers`/`modulePressHoldHandlers` — the two-function chokepoint to no-op when `readOnly`)
+- [Source: apps/client/src/modules/registry.ts:13-20] (`ModuleDefuserViewProps` — add `readOnly`)
+- [Source: apps/client/src/ui/ActiveRound.tsx:91-152] (resting + spectator branches to replace with `SpectatorLounge`; outer-wrapper voice/overlay HUD already floats above `surface`)
+- [Source: apps/client/src/ui/LifelinePanel.tsx] (Story 9.3 self-contained affordance — re-host into the lounge HUD, remove duplicate mount)
+- [Source: packages/shared/src/voice/scope.ts:141-189] (voice room mapping: spectator/resting/facilitator → `spectator-lounge`, `canPublish: true` — the 3.7 bidirectional reality behind AC-7)
+- [Source: apps/client/src/ui/copy.ts:176-184,215-232] (lounge voice copy `VOICE_LOUNGE_CONNECTED`; lifeline copy — add any lounge-indicator string here)
+- [Source: _agent_docs/implementation-artifacts/deferred-work.md:27-29,127] (3.7 audio-bridge status; the now-resolved socket-id manual-authority note — manualHandlers uses durable `playerId` today)
+
+### Design Decisions (proposed 2026-07-03 — AFK-defaults pending Jay's confirmation; re-confirm before/at dev)
+
+1. **Bomb-stream delivery → dedicated `loungeRoom` + dual-targeted emits** (NOT joining spectators to the team room). Rationale: preserves Story 9.3's `LIFELINE_TOAST` team-room targeting (spectators must not see the toast); models "the lounge audience" cleanly. Cost: a one-line room-list change at ~7 emit sites via a `bombAudience()` helper. *Alternatives: (B) join spectators to the team room — rejected, regresses 9.3; (C) broadcast bomb stream session-wide — loosens the "bomb-private → team room" invariant.* → Task 1/2.
+2. **Read-only bomb → thread `readOnly` to the two interaction chokepoints (`moduleClickHandlers`/`modulePressHoldHandlers`) + disable camera-focus.** Neutralizes all module interaction via two functions rather than editing 12 DefuserViews wholesale (each DefuserView forwards one flag). Camera: drop focus, keep orbit/zoom. *Lighter fallback if the 12-file forward is judged too broad: rely on the server's `NOT_TEAM_DEFUSER` refusal for interaction and disable only camera-focus — accepts a server-rejected click on the wire.* → Task 3.
+3. **Manual mirror → extend `ManualViewer` with a `followChapterId` follow-only mode** (reuse), not a new bespoke pane. Consistent with how 9.1 added `assignedChapterIds`. Absent prop = unchanged Expert viewer. → Task 4.
+3b. **Multiple Experts → MULTIVIEW: one read-only pane per active-team Expert, all shown at once** (Jay's decision 2026-07-03: "lets have a multiview of each of the experts"). This **supersedes the epic's written AC-3** ("mirror the most-recently-navigated Expert"), which is a deliberate, Jay-directed deviation — a reviewer should NOT flag it as an AC violation. Mechanics: client accumulates `Record<playerId, chapterId>` from the existing `EXPERT_MANUAL_POSITION` broadcasts (no new event); the server persists the position **per-Expert** (Task 2) so a mid-round joiner is replayed every Expert's page. Panes keyed by durable `playerId`, ordered stably, each headed with the Expert's name. **Layout — RESOLVED by Jay via UX pass (2026-07-03): stacked cards** (full-size text, per-card scroll; columns rejected as illegible at 3 Experts, focus+filmstrip rejected as one-readable-at-a-time). Visual spec `mockups/5b. Lounge Manual Multiview.html`; spine EXPERIENCE.md IA §4. → Task 2/4/5.
+4. **Lounge audience → genuine Spectators + resting-team players + the Facilitator** (Jay's decision 2026-07-03 — the facilitator watches the active bomb too). The facilitator watches but never earns/holds tokens, so its lounge HUD suppresses the counter + Send-Tip (earner-predicate gate). *If a dedicated in-round Facilitator Dashboard (`mockups/6. Facilitator Dashboard.html`) ships later, it supersedes the facilitator's lounge mount.* → Task 1/5.
+5. **Voice → keep the shipped 3.7 bidirectional lounge; interpret AC-7 "cannot publish" as the structural Bomb-Room boundary; render a neutral "Spectator Lounge" indicator, not a literal "Listen-only" pill.** Rationale: 3.7 (Jay's 2026-07-01 decision) already superseded the mockup's listen-only wording; a literal listen-only pill would misdescribe shipped behavior. *If Jay wants a true listen-only lounge, that's a 3.7 reversal — out of scope here; say so and I'll open it separately.* → Task 5/6.
+
+## Dev Agent Record
+
+### Agent Model Used
+
+Opus 4.8 (claude-opus-4-8)
+
+### Debug Log References
+
+- **e2e multiview blank — root cause: the e2e boot server never registered the manual handler.** The first e2e run had the split-pane + bomb-mirror test PASS but the manual-multiview test FAIL with `expertManualPositions === {}` on the spectator, even though (diagnostically confirmed) the navigating Expert was `connected`, role `expert`, on the active team, and the spectator was `connected` with the full roster. The gap was `apps/server/src/testing/bootTestServer.ts` (the Playwright in-process server) registering only `registerSessionHandlers` + `registerModuleHandlers` — so `MANUAL_NAVIGATE` was silently unhandled and no `EXPERT_MANUAL_POSITION` ever broadcast. Fix: register `registerManualHandlers` in the e2e server. After that both lounge e2e tests pass in ~18s with no retries. (The earlier "Ada, Xander, Yara dropped — holding the clock" pause strip in the trace was cleanup-time context teardown, a red herring.)
+- The dual-target emit sites moved from `io.to(teamRoom)` to `io.to(bombAudience)` (an array), so the mock-`io.to(room)` unit tests in `escalateOnStrike`/`resolveRound`/`timerScheduler` were updated to expect the `[teamRoom, loungeRoom]` room list.
+
+### Completion Notes List
+
+Implemented the full Spectator Lounge across server + client, per all five Jay-confirmed design decisions.
+
+**Server (Tasks 1–2):**
+- `loungeRoom(sessionId)` + `bombAudience(sessionId, teamId)` helpers beside `teamRoom` (`sessionHandlers.ts`). The lounge audience = every roster socket NOT on the active team (`teamId !== activeTeamId`) — genuine spectators, resting-team players, AND the facilitator (DD4). Joined at ROUND_START (leave-then-recompute so membership flips round-to-round) and on the mid-round reattach path.
+- Dual-targeted the active team's bomb stream to `[teamRoom, loungeRoom]` at every emit site: `BOMB_INIT` + `TIMER_UPDATE` (ROUND_START), `MODULE_UPDATE` + terminal `STRIKE` (`moduleHandlers`), escalation `STRIKE` (`escalateOnStrike`), pause/resume `TIMER_UPDATE` (`pauseTimers`), and the `BOMB_DEFUSED`/`BOMB_EXPLODED` resolution (`resolveRound`). `LIFELINE_TOAST` deliberately NOT dual-targeted (R1).
+- Manual position persistence changed from a single last-write-wins `{ chapterId, playerId }` object to a per-Expert **map** `Record<playerId, chapterId>` merged via `updateJSON` (CAS); the per-nav broadcast is unchanged. Cleared at ROUND_START; replayed per-Expert to a mid-round-joining spectator (`replayLoungeSnapshot`, which also unicasts the active bomb + timer).
+
+**Client (Tasks 3–5):**
+- Read-only bomb: a module-level interaction flag (`setModuleInteractionReadOnly`) that the two gesture chokepoints (`moduleClickHandlers`/`modulePressHoldHandlers`) read (they still `stopPropagation`, never dispatch). Set by `BombScene` from its new `readOnly` prop — so no per-DefuserView edits were needed (matches the story's file list). The helpers also accept an explicit `{ readOnly }` option (used by unit tests). `CameraRig`/`ModuleBay` drop the Defuser camera-focus machinery under `readOnly`; orbit/zoom remain.
+- `expertManualPositions` map slice + `setExpertManualPosition` (merge) + resets in `setBomb`/`clearSession` (R4); `EXPERT_MANUAL_POSITION` registered in `bindServerEvents`.
+- `ManualViewer` gained a `followChapterId` follow-only mode (forces the chapter, hides sidebar/search/arrows, never writes a position, placeholder for null/unknown); the Expert path (`followChapterId` absent) is byte-for-byte unchanged (R3).
+- New `SpectatorLounge.tsx`: top bar (neutral "Spectator Lounge" pill per DD5 + re-hosted `LifelinePanel`/counter, suppressed for the facilitator), 60/40 split, left read-only bomb, right stacked-card Expert multiview (one follow pane per active-team Expert, ordered by display name). Mounted in `ActiveRound` for resting + spectator + facilitator; the teamless bomb-role edge case keeps the plain `ROUND_IN_PROGRESS` text (and retains the 9.2/9.3 earner counter + Send-Tip so a teamless earner's balance is not invisible — a deliberate preservation of shipped behaviour).
+- `BombStage` gained a `fill` prop so the lounge left pane sizes to its cell instead of the viewport.
+
+**Voice (Task 6):** No plumbing — the 3.7 `VoiceController`/`SpeakerIndicator`/`MuteControl` overlays mount in ActiveRound's untouched outer wrapper and float over the lounge. AC-7 "cannot publish into a Bomb Room" is satisfied by the structural LiveKit room boundary (`scope.ts`), per DD5; the lounge shows a neutral pill, not a literal "Listen-only" label (which would misdescribe the shipped bidirectional lounge).
+
+**Design-decision note (DD4 vs. a stale test bullet):** Task 1's test bullet said "the facilitator is NOT" a lounge member, which contradicts the Jay-confirmed DD4 ("the facilitator watches the active bomb too"). Since the facilitator has no `teamId`, it can only receive the active bomb stream via the lounge room, so it MUST be a member. Implemented + tested the facilitator AS a lounge member (its HUD suppresses the token counter + Send-Tip via the earner gate).
+
+**Tests:** shared 509, server 632 (2 pre-existing skips), client 547, e2e 26 — all green; `pnpm -w typecheck` clean. New server integration suite `loungeHandlers.test.ts` (audience membership, dual-target delivery, MODULE_UPDATE/STRIKE mirror, per-Expert map merge, ROUND_START clear, mid-round reattach replay, R5). New client units for the read-only gate, `expertManualPositions`, the `EXPERT_MANUAL_POSITION` binding, `ManualViewer` follow-mode, and `SpectatorLounge`. New e2e `spectator-lounge.spec.ts` (split-pane + bomb mirror + read-only; multiview + reload replay). R1 is guarded by the existing `lifelineHandlers` tests (a lounge spectator does NOT receive `LIFELINE_TOAST`).
+
+**Pending:** Jay's interactive human verification (Task 7 last subtask) — not done until his observed result is recorded here.
+
+### File List
+
+**Server (modified):**
+- `apps/server/src/state/keys.ts` — `manualPositionKey` doc → `Record<playerId, chapterId>`
+- `apps/server/src/handlers/sessionHandlers.ts` — `loungeRoom`/`bombAudience` helpers, `replayLoungeSnapshot`, ROUND_START lounge join + clear map + dual-target BOMB_INIT/TIMER, mid-round reattach lounge join + replay
+- `apps/server/src/handlers/manualHandlers.ts` — persist per-Expert map merge via `updateJSON`
+- `apps/server/src/handlers/moduleHandlers.ts` — dual-target MODULE_UPDATE + terminal STRIKE
+- `apps/server/src/timer/escalateOnStrike.ts` — dual-target STRIKE
+- `apps/server/src/timer/pauseTimers.ts` — dual-target TIMER_UPDATE (freeze + resume)
+- `apps/server/src/round/resolveRound.ts` — dual-target resolution
+- `apps/server/src/testing/bootTestServer.ts` — register `manualHandlers` for e2e
+
+**Server (tests):**
+- `apps/server/src/handlers/__tests__/loungeHandlers.test.ts` — NEW
+- `apps/server/src/handlers/__tests__/manualHandlers.test.ts` — map shape + updateJSON-failure path
+- `apps/server/src/handlers/__tests__/sessionHandlers.test.ts` — resting player watches via lounge
+- `apps/server/src/timer/__tests__/escalateOnStrike.test.ts` — dual-target room list
+- `apps/server/src/timer/__tests__/timerScheduler.test.ts` — dual-target room list
+- `apps/server/src/round/__tests__/resolveRound.test.ts` — dual-target room list
+
+**Client (modified):**
+- `apps/client/src/modules/interaction.ts` — read-only gate + ambient flag
+- `apps/client/src/scenes/BombScene.tsx` — `readOnly` prop, set flag, disable camera-focus
+- `apps/client/src/scenes/ModuleBay.tsx` — `readOnly` prop, drop faceplate focus onClick
+- `apps/client/src/scenes/BombStage.tsx` — `fill` prop
+- `apps/client/src/store/gameStore.ts` — `expertManualPositions` slice + `setExpertManualPosition` + resets
+- `apps/client/src/net/bindServerEvents.ts` — register `EXPERT_MANUAL_POSITION`
+- `apps/client/src/manual/ManualViewer.tsx` — `followChapterId` follow-only mode
+- `apps/client/src/ui/ActiveRound.tsx` — mount `SpectatorLounge` (resting/spectator/facilitator); teamless earner retains counter+panel
+- `apps/client/src/ui/copy.ts` — lounge indicator + Expert-pane header strings
+
+**Client (new):**
+- `apps/client/src/ui/SpectatorLounge.tsx`
+
+**Client (tests):**
+- `apps/client/src/modules/__tests__/interaction.test.ts` — read-only gate
+- `apps/client/src/store/__tests__/expertManualPositions.test.ts` — NEW
+- `apps/client/src/net/__tests__/manualPositionBinding.test.ts` — NEW
+- `apps/client/src/manual/__tests__/ManualViewer.follow.test.tsx` — NEW
+- `apps/client/src/ui/__tests__/SpectatorLounge.test.tsx` — NEW
+- `apps/client/src/ui/__tests__/ActiveRound.test.tsx` — lounge routing
+
+**e2e:**
+- `apps/client/e2e/flows/spectator-lounge.spec.ts` — NEW
+- `apps/client/e2e/flows/spectator-lifeline-token-economy.spec.ts` — modifier-off assertion updated to the lounge surface
+
+### Change Log
+
+- 2026-07-04 — Implemented Story 9.4 Spectator Lounge (server loungeRoom + dual-target bomb stream + per-Expert manual replay; client read-only bomb + follow-only multiview + `SpectatorLounge` split-pane). All 5 design decisions confirmed by Jay. Registered `manualHandlers` in the e2e boot server (previously unregistered, which blocked the multiview e2e). Tests: shared 509 / server 632 / client 547 / e2e 26 green; typecheck clean. Status → review; pending Jay's human verification.

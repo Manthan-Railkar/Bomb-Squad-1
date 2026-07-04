@@ -1601,7 +1601,9 @@ describe('ROUND_START handler', () => {
     const { sessionId } = await setupPrepared();
 
     const mayaBomb = new Promise<BombState>((res) => maya.once('BOMB_INIT', (b) => res(b as BombState)));
-    // Maya (Team A, active) gets exactly one BOMB_INIT; Devon (Team B, resting) none.
+    // Maya (Team A, active) gets exactly one BOMB_INIT. Story 9.4: Devon (Team B,
+    // resting) is a LOUNGE member now, so the dual-targeted BOMB_INIT also reaches
+    // him — he WATCHES the active bomb (there is still no SEPARATE Team-B bomb key).
     const mayaBombSpy = jest.fn();
     maya.on('BOMB_INIT', mayaBombSpy);
     const devonBombSpy = jest.fn();
@@ -1620,7 +1622,8 @@ describe('ROUND_START handler', () => {
 
     await new Promise((r) => setTimeout(r, 100));
     expect(mayaBombSpy).toHaveBeenCalledTimes(1);
-    expect(devonBombSpy).not.toHaveBeenCalled();
+    // Devon watches the active bomb via the lounge (Story 9.4) — one copy, not zero.
+    expect(devonBombSpy).toHaveBeenCalledTimes(1);
   });
 
   it('non-facilitator → NOT_FACILITATOR, no broadcast, no round key', async () => {
@@ -1802,19 +1805,21 @@ describe('ROUND_START — timer mint & expiry (Story 8.4)', () => {
     const { sessionId } = await prep();
 
     const mayaTimer = onceEvent<TimerState>(maya, 'TIMER_UPDATE');
-    // Devon (Team B, resting in round 1) must NOT receive any timer.
+    // Story 9.4: Devon (Team B, resting) is a lounge member and WATCHES the active
+    // team's clock via the dual-targeted TIMER_UPDATE — one copy, not zero. There is
+    // still no SEPARATE Team-B timer key / arm (only the active team is armed).
     const devonSawTimer = jest.fn();
     devon.on('TIMER_UPDATE', devonSawTimer);
 
     facilitator.emit('ROUND_START');
     await mayaTimer;
-    // Give any stray cross-team broadcast a window to (not) arrive.
+    // Give the dual-targeted lounge broadcast a window to arrive.
     await new Promise((r) => setTimeout(r, 150));
 
     expect(store.data.has(timerKey(sessionId, 'A'))).toBe(true);
     expect(store.data.has(timerKey(sessionId, 'B'))).toBe(false);
-    expect(scheduler.armCalls.map((c) => c.teamId)).toEqual(['A']);
-    expect(devonSawTimer).not.toHaveBeenCalled();
+    expect(scheduler.armCalls.map((c) => c.teamId)).toEqual(['A']); // only A armed
+    expect(devonSawTimer).toHaveBeenCalledTimes(1); // watched via the lounge
   });
 
   it('authoritative expiry: single active team resolves immediately into between-rounds (8.5/8.6 ceremony)', async () => {

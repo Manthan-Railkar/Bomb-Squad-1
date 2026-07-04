@@ -136,7 +136,8 @@ describe('TimerScheduler fire path (reload + revalidate)', () => {
     // between-rounds entry fires too (SESSION_STATE routes to the scoreboard,
     // SCOREBOARD carries the preview).
     expect(h.emitted[0]).toEqual({
-      room: `session:${SID}:team:A`,
+      // Story 9.4: resolution dual-targeted to the active team room + lounge.
+      room: [`session:${SID}:team:A`, `session:${SID}:lounge`],
       event: 'BOMB_EXPLODED',
       payload: { teamId: 'A', elapsedMs: 10_000 },
     });

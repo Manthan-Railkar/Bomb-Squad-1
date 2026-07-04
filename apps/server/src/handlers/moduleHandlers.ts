@@ -5,7 +5,7 @@ import { bombReducer } from '../reducers/bombReducer.js';
 import { escalateOnStrike } from '../timer/escalateOnStrike.js';
 import { onBombDefused, onThirdStrike } from '../round/resolveRound.js';
 import {
-  teamRoom,
+  bombAudience,
   type SessionIOServer,
   type SessionHandlerDeps,
 } from './sessionHandlers.js';
@@ -197,9 +197,10 @@ export function registerModuleHandlers(io: SessionIOServer, deps: SessionHandler
         await deps.redis.setJSON(bombKey(sessionId, teamId), next);
 
         // Persist-then-emit: the post-rollup module snapshot is the authoritative
-        // truth the client applies (it flips the solve LED). Bomb-private → team
-        // room only.
-        io.to(teamRoom(sessionId, teamId)).emit('MODULE_UPDATE', {
+        // truth the client applies (it flips the solve LED). Story 9.4: dual-target
+        // the lounge (the active team is the only one with a live bomb under Model B)
+        // so a read-only spectator mirror updates in lockstep with the Defuser.
+        io.to(bombAudience(sessionId, teamId)).emit('MODULE_UPDATE', {
           moduleIndex,
           state: next.modules[moduleIndex],
         });
@@ -231,7 +232,8 @@ export function registerModuleHandlers(io: SessionIOServer, deps: SessionHandler
             // so emitting nothing is correct.
             const liveTimer = await deps.redis.getJSON<TimerState>(timerKey(sessionId, teamId));
             if (liveTimer !== null) {
-              io.to(teamRoom(sessionId, teamId)).emit('STRIKE', {
+              // Story 9.4: dual-target so the lounge strike HUD lights the 3rd dot too.
+              io.to(bombAudience(sessionId, teamId)).emit('STRIKE', {
                 teamId,
                 strikes: next.strikes,
                 timer: liveTimer,

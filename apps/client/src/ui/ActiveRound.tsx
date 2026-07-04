@@ -8,6 +8,7 @@ import ManualViewer from '../manual/ManualViewer.js';
 import { buildChapters } from '../manual/chapters.js';
 import { MANUAL_MODULES } from '../modules/index.js';
 import ResolutionBanner from './ResolutionBanner.js';
+import SpectatorLounge from './SpectatorLounge.js';
 import LifelinePanel from './LifelinePanel.js';
 import LifelineToastHost from './LifelineToast.js';
 import VoiceController from './VoiceController.js';
@@ -16,7 +17,7 @@ import PauseOverlay from './PauseOverlay.js';
 import SpeakerIndicator from './SpeakerIndicator.js';
 import MuteControl from './MuteControl.js';
 import AudioUnblockPrompt from './AudioUnblockPrompt.js';
-import { ROUND_IN_PROGRESS, WATCHING_THE_BOMB_ROOM, RESTING_SPECTATE, LIFELINE_TOKENS_LABEL } from './copy.js';
+import { ROUND_IN_PROGRESS, LIFELINE_TOKENS_LABEL } from './copy.js';
 
 /**
  * Active-round surface routing (Story 8.3, FR11) — the same session URL shows
@@ -42,8 +43,8 @@ export default function ActiveRound() {
   // Story 9.1: this Expert's restricted chapter set (null = full access). Read
   // reactively so the manual re-restricts the moment the assignment lands.
   const assignedChapterIds = useGameStore((s) => s.assignedChapterIds);
-  // Story 9.2: this spectator's standing lifeline-token balance. Read reactively
-  // so the counter updates the instant a grant lands.
+  // Story 9.2: this earner's standing lifeline-token balance — only the teamless
+  // earner reads it here now (spectators/resting players see it inside the lounge).
   const lifelineTokens = useGameStore((s) => s.lifelineTokens);
   const manualLocale = useUiStore((s) => s.manualLocale);
 
@@ -72,37 +73,10 @@ export default function ActiveRound() {
   const myTeamId = self?.teamId;
   const isResting = myTeamId !== undefined && myTeamId !== session.activeTeamId;
 
-  // Story 9.2: passive lifeline-token counter for watching players (spectators +
-  // resting-team relayers — Design Decision 1). Gated STRICTLY on the modifier
-  // flag: even if a stale non-zero `lifelineTokens` lingers from a prior
-  // modifier-on config, the modifier-off branch renders no counter (AC-2). The
-  // send affordance is Story 9.3 — this is the balance only.
-  const showLifelineTokens = session.config.modifiers.spectatorLifelines;
-  const lifelineCounter = showLifelineTokens ? (
-    <p
-      data-testid="lifeline-token-counter"
-      className="mt-4 font-mono text-xs uppercase tracking-widest text-ink-muted"
-    >
-      {LIFELINE_TOKENS_LABEL(lifelineTokens)}
-    </p>
-  ) : null;
-
   let surface: ReactNode;
   if (isResting) {
-    surface = (
-      <div className="flex flex-1 flex-col items-center justify-center p-8">
-        <p
-          data-testid="resting-standby"
-          className="max-w-md text-center font-mono text-sm uppercase tracking-widest text-ink-muted"
-        >
-          {RESTING_SPECTATE}
-        </p>
-        {lifelineCounter}
-        {/* Story 9.3: send affordance for watching players — self-hides unless the
-            modifier is on AND this viewer holds a token. */}
-        <LifelinePanel />
-      </div>
-    );
+    // A resting-team player (any role) watches the active bomb via the lounge (9.4).
+    surface = <SpectatorLounge chapters={realChapters} />;
   } else if (role === 'defuser' && myTeamId !== undefined) {
     surface = (
       <BombStage>
@@ -110,31 +84,42 @@ export default function ActiveRound() {
       </BombStage>
     );
   } else if (role === 'expert' && myTeamId !== undefined) {
-    // Teamless expert/defuser (joined between rounds; TEAM_ASSIGN is
-    // lobby-locked so they can never be teamed) falls through to standby —
-    // otherwise a fresh-name rejoin would hold the FULL manual while the
-    // active team's Experts are split (restriction bypass, review 9.1).
     surface =
       assignedChapterIds !== null ? (
         <ManualViewer chapters={realChapters} assignedChapterIds={assignedChapterIds} />
       ) : (
         <ManualViewer chapters={realChapters} />
       );
+  } else if (role === 'spectator' || role === 'facilitator') {
+    // Genuine Spectator AND the Facilitator (DD4 — the facilitator watches the
+    // active bomb too) get the composed lounge. The lounge self-suppresses the
+    // token counter + Send-Tip for the (non-earner) facilitator.
+    surface = <SpectatorLounge chapters={realChapters} />;
   } else {
+    // The only remaining case: a TEAMLESS bomb-role (defuser/expert joined between
+    // rounds; TEAM_ASSIGN is lobby-locked so they can never be teamed). Keep the
+    // legible round-in-progress text (Story 9.4 leaves this the ONE fallback that is
+    // NOT the lounge — they hold a bomb role but no team, so no split-pane). They
+    // ARE lifeline earners though (server grants + accepts their send — review 9.2/9.3),
+    // so preserve the token counter + Send-Tip here so their balance is not invisible.
+    // Reaching here, role is a teamless bomb-role or undefined (spectator/facilitator
+    // were routed to the lounge above) — an earner is exactly the teamless bomb-role.
+    const isTeamlessEarner = role === 'defuser' || role === 'expert';
+    const showTeamlessCounter = isTeamlessEarner && session.config.modifiers.spectatorLifelines;
     surface = (
       <div className="flex flex-1 flex-col items-center justify-center p-8">
         <p className="font-mono text-sm uppercase tracking-widest text-ink-muted">
-          {role === 'spectator' ? WATCHING_THE_BOMB_ROOM : ROUND_IN_PROGRESS}
+          {ROUND_IN_PROGRESS}
         </p>
-        {/* Counter for every non-facilitator on this fallback — the earner set
-            exactly (review 9.2): besides a genuine spectator, a TEAMLESS
-            defuser/expert (joined between rounds; TEAM_ASSIGN is lobby-locked)
-            lands here AND earns tokens, so hiding the counter from them would
-            mint an invisible balance. The facilitator never earns. */}
-        {role !== undefined && role !== 'facilitator' ? lifelineCounter : null}
-        {/* Story 9.3: send affordance — same earner predicate, so a teamless
-            earner can spend what they hold; self-hides at 0 tokens. */}
-        {role !== undefined && role !== 'facilitator' ? <LifelinePanel /> : null}
+        {showTeamlessCounter ? (
+          <p
+            data-testid="lifeline-token-counter"
+            className="mt-4 font-mono text-xs uppercase tracking-widest text-ink-muted"
+          >
+            {LIFELINE_TOKENS_LABEL(lifelineTokens)}
+          </p>
+        ) : null}
+        {isTeamlessEarner ? <LifelinePanel /> : null}
       </div>
     );
   }

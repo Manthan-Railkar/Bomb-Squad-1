@@ -19,10 +19,13 @@ export const lifelinesKey = (sessionId: string): string =>
   `session:${sessionId}:lifelines`;
 
 /**
- * Most recent Expert manual position for the session (value: JSON
- * `{ chapterId, playerId }`). Last write wins — that IS the locked-mirror
- * semantic from GDD A3 (spectator manual follows the most-recently-navigated
- * Expert). Single-key O(1) write per navigation.
+ * Per-Expert manual positions for the session (Story 9.4 multiview). Value: JSON
+ * `Record<playerId, chapterId>` — one entry per active-team Expert, MERGED on each
+ * navigation (NOT last-write-wins). Story 5.2 wrote a single `{ chapterId, playerId }`
+ * object here; 9.4 replaced it with a map so a mid-round-joining spectator can be
+ * replayed EVERY Expert's current page (one `EXPERT_MANUAL_POSITION` per entry), not
+ * just the last one. Cleared at ROUND_START so last round's pages don't bleed into
+ * a new round. Small O(1) single-key read/write per navigation.
  */
 export const manualPositionKey = (sessionId: string): string =>
   `session:${sessionId}:manualPosition`;

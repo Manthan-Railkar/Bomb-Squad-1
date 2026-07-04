@@ -86,8 +86,9 @@ describe('escalateOnStrike', () => {
     expect(persisted.startedAt).toBe(1_000);
 
     expect(h.emitted).toHaveLength(1);
+    // Story 9.4: STRIKE is dual-targeted to the active team room AND the lounge.
     expect(h.emitted[0]).toMatchObject({
-      room: `session:${SID}:team:A`,
+      room: [`session:${SID}:team:A`, `session:${SID}:lounge`],
       event: 'STRIKE',
       payload: { teamId: 'A', strikes: 1 },
     });

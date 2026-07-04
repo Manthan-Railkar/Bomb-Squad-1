@@ -183,6 +183,22 @@ export const VOICE_LOUNGE_CTA = 'Join the Spectator Lounge';
 export const VOICE_LOUNGE_CONNECTING = 'Connecting to the lounge…';
 export const VOICE_LOUNGE_CONNECTED = 'In the lounge — hearing the Bomb Room.';
 
+// Spectator Lounge composed surface (Story 9.4). Neutral lounge/voice indicator —
+// DD5: NOT a literal "Listen-only" pill (Story 3.7 made the lounge bidirectional,
+// so that label would misdescribe shipped behaviour). Live voice state is carried
+// by the existing SpeakerIndicator + MuteControl overlays, not by this pill.
+export const LOUNGE_INDICATOR = 'Spectator Lounge';
+/** Left-pane tag naming the team being watched. */
+export const LOUNGE_WATCHING_TEAM = (teamName: string): string => `Watching · Team ${teamName}`;
+export const LOUNGE_READ_ONLY = 'Read-only';
+/** Per-Expert card header chapter label: "Ch. {n} · {title}" (or a dash when unopened). */
+export const LOUNGE_EXPERT_CHAPTER = (chapterNumber: number, chapterTitle: string): string =>
+  `Ch. ${chapterNumber} · ${chapterTitle}`;
+export const LOUNGE_EXPERT_CHAPTER_NONE = '—';
+export const LOUNGE_EXPERT_FOLLOWING = '🔒 following';
+/** Fail-soft display name when an Expert's roster name is somehow absent (never the raw id). */
+export const LOUNGE_EXPERT_FALLBACK_NAME = 'Expert';
+
 // In-round speaker indicator + self-mute (Story 3.4). The pill always shows the
 // name (never icon-only); SPEAKING is reused for its accessible label. The mute
 // control carries an aria-label that flips with state — operator-world, dry.

@@ -13,6 +13,7 @@ import { DEV_BOMB_CONTEXT } from './devBombContext.js';
 import { DEV_PLACEHOLDER_MODULES } from './devBombState.js';
 import { E2eSceneHook } from './E2eSceneHook.js';
 import { isTextEntryTarget, prefersReducedMotion } from './dom.js';
+import { setModuleInteractionReadOnly } from '../modules/interaction.js';
 
 /**
  * Bomb scene: bakelite chassis with diegetic BombContext metadata (Story 4.2)
@@ -54,14 +55,16 @@ const FOCUS_DISTANCE = 1.6;
 /** Zoom clamps: can't enter the chassis, can't lose it to a speck. */
 const MIN_DISTANCE = 1.2;
 const MAX_DISTANCE = 10;
-function CameraRig({ slots }: { slots: ModuleSlot[] }) {
+function CameraRig({ slots, readOnly = false }: { slots: ModuleSlot[]; readOnly?: boolean }) {
   const controlsRef = useRef<CameraControlsImpl | null>(null);
   // Reactive subscription is correct here: focus changes are click-rate, not
   // per-frame (getState()-in-useFrame applies to tick-rate reads only).
   const activeModuleIndex = useUiStore((s) => s.activeModuleIndex);
   const skippedFirstRun = useRef(false);
 
-  // AC1 button contract: left-drag = orbit, wheel = zoom, right/middle = NONE (reserved).
+  // AC1 button contract: left-drag = orbit, wheel = zoom, right/middle = NONE
+  // (reserved). Story 9.4: orbit/zoom REMAIN for a read-only lounge bomb — a
+  // spectator may look around; only the Defuser focus machinery below is dropped.
   useEffect(() => {
     const controls = controlsRef.current;
     if (!controls) return;
@@ -71,8 +74,10 @@ function CameraRig({ slots }: { slots: ModuleSlot[] }) {
     controls.mouseButtons.wheel = CameraControlsImpl.ACTION.DOLLY;
   }, []);
 
-  // AC1: ESC returns to overview (clears focus; the pose effect below moves the camera).
+  // AC1: ESC returns to overview (clears focus; the pose effect below moves the
+  // camera). Story 9.4: no focus to clear on a read-only bomb — skip the listener.
   useEffect(() => {
+    if (readOnly) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       if (isTextEntryTarget(event.target)) return;
@@ -80,10 +85,13 @@ function CameraRig({ slots }: { slots: ModuleSlot[] }) {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [readOnly]);
 
   // Camera follows the focus state (uiStore.activeModuleIndex is the single source).
+  // Story 9.4: a read-only lounge bomb has NO Defuser focus controls — the camera
+  // stays at the overview pose and never dollies to a module face.
   useEffect(() => {
+    if (readOnly) return;
     const controls = controlsRef.current;
     if (!controls) return;
     if (!skippedFirstRun.current) {
@@ -109,7 +117,7 @@ function CameraRig({ slots }: { slots: ModuleSlot[] }) {
       z,
       animate,
     );
-  }, [activeModuleIndex, slots]);
+  }, [activeModuleIndex, slots, readOnly]);
 
   return <CameraControls ref={controlsRef} minDistance={MIN_DISTANCE} maxDistance={MAX_DISTANCE} />;
 }
@@ -131,9 +139,28 @@ interface BombSceneProps {
   typesOnly?: boolean;
   /** Prep slot source (types only). Required when `typesOnly`; ignored otherwise. */
   modules?: ReadonlyArray<{ moduleId: string }>;
+  /**
+   * Read-only mirror mode (Story 9.4 Spectator Lounge): render the active team's
+   * bomb with ZERO interaction — module gestures no-op and the Defuser
+   * camera-focus controls are disabled (orbit/zoom remain). Defaults false (the
+   * Defuser's interactive bomb is unchanged).
+   */
+  readOnly?: boolean;
 }
 
-export default function BombScene({ typesOnly = false, modules: prepModules }: BombSceneProps = {}) {
+export default function BombScene({
+  typesOnly = false,
+  modules: prepModules,
+  readOnly = false,
+}: BombSceneProps = {}) {
+  // Story 9.4: gate the two module-interaction chokepoints for this scene. A client
+  // renders exactly one BombScene at a time, so the module-level flag is
+  // unambiguous. Reset on unmount so a later interactive bomb is never left locked.
+  useEffect(() => {
+    setModuleInteractionReadOnly(readOnly);
+    return () => setModuleInteractionReadOnly(false);
+  }, [readOnly]);
+
   // Reactive (non-per-frame) reads: layout and metadata follow the bomb
   // snapshot when one exists, else the dev-harness placeholders. The modules
   // array (not a bare count) is the source of truth since 4.3 — each slot
@@ -196,10 +223,11 @@ export default function BombScene({ typesOnly = false, modules: prepModules }: B
           slot={slot}
           moduleId={modules[slot.moduleIndex]?.moduleId ?? 'placeholder'}
           typesOnly={typesOnly}
+          readOnly={readOnly}
         />
       ))}
 
-      <CameraRig slots={slots} />
+      <CameraRig slots={slots} readOnly={readOnly} />
 
       {/* AC-3 verification aid: live FPS/ms panel, opt-in via ?stats (dev only). */}
       {SHOW_STATS && <Stats />}

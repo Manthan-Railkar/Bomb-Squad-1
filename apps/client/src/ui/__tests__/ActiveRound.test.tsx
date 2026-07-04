@@ -16,9 +16,13 @@ vi.mock('../../modules/index.js', () => ({ SANDBOX_MODULES: [], MANUAL_MODULES: 
 vi.mock('../ResolutionBanner.js', () => ({ default: () => null }));
 vi.mock('../PauseOverlay.js', () => ({ default: () => null }));
 vi.mock('../VoiceController.js', () => ({ default: () => null }));
+// Story 9.4: the lounge is the composed watching surface — stub it to a sentinel
+// so this test asserts ROUTING (which surface a role gets), not lounge internals
+// (those are covered in SpectatorLounge.test.tsx). It renders its own bomb + manual.
+vi.mock('../SpectatorLounge.js', () => ({ default: () => <div data-testid="spectator-lounge" /> }));
 
 import ActiveRound from '../ActiveRound.js';
-import { RESTING_SPECTATE, ROUND_IN_PROGRESS } from '../copy.js';
+import { ROUND_IN_PROGRESS } from '../copy.js';
 
 /** An active round where Team A is active; viewer is one of the seeded players. */
 function seed(viewer: string) {
@@ -32,6 +36,9 @@ function seed(viewer: string) {
       // Team B (resting): a defuser-that-was + an expert.
       bd: makePlayer({ playerId: 'bd', displayName: 'Bex', role: 'defuser', teamId: 'B' }),
       be: makePlayer({ playerId: 'be', displayName: 'Ben', role: 'expert', teamId: 'B' }),
+      // A genuine spectator + the facilitator (both watch via the lounge — DD4).
+      sp: makePlayer({ playerId: 'sp', displayName: 'Sam', role: 'spectator' }),
+      fa: makePlayer({ playerId: 'fa', displayName: 'Fae', role: 'facilitator' }),
       // TEAMLESS late joiners (joined between rounds; TEAM_ASSIGN is
       // lobby-locked so they can never be teamed) — review 9.1.
       te: makePlayer({ playerId: 'te', displayName: 'Tia', role: 'expert' }),
@@ -56,28 +63,40 @@ describe('ActiveRound — Model B active-team-first routing (Story 8.11)', () =>
     seed('ad');
     render(<ActiveRound />);
     expect(screen.getByTestId('bomb-stage')).toBeInTheDocument();
-    expect(screen.queryByTestId('resting-standby')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('spectator-lounge')).not.toBeInTheDocument();
   });
 
   it('active-team expert sees the manual', () => {
     seed('ae');
     render(<ActiveRound />);
     expect(screen.getByTestId('manual')).toBeInTheDocument();
-    expect(screen.queryByTestId('resting-standby')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('spectator-lounge')).not.toBeInTheDocument();
   });
 
-  it('a RESTING-team defuser (their team is not active) is routed to standby, NOT the bomb', () => {
+  it('a RESTING-team defuser (their team is not active) is routed to the lounge, NOT the bomb (9.4)', () => {
     seed('bd');
     render(<ActiveRound />);
-    expect(screen.getByTestId('resting-standby')).toHaveTextContent(RESTING_SPECTATE);
+    expect(screen.getByTestId('spectator-lounge')).toBeInTheDocument();
     expect(screen.queryByTestId('bomb-stage')).not.toBeInTheDocument();
   });
 
-  it('a RESTING-team expert is routed to standby, NOT the manual', () => {
+  it('a RESTING-team expert is routed to the lounge, NOT their own manual (9.4)', () => {
     seed('be');
     render(<ActiveRound />);
-    expect(screen.getByTestId('resting-standby')).toBeInTheDocument();
+    expect(screen.getByTestId('spectator-lounge')).toBeInTheDocument();
     expect(screen.queryByTestId('manual')).not.toBeInTheDocument();
+  });
+
+  it('a genuine spectator is routed to the lounge (9.4)', () => {
+    seed('sp');
+    render(<ActiveRound />);
+    expect(screen.getByTestId('spectator-lounge')).toBeInTheDocument();
+  });
+
+  it('the facilitator is routed to the lounge too (DD4 — the facilitator watches)', () => {
+    seed('fa');
+    render(<ActiveRound />);
+    expect(screen.getByTestId('spectator-lounge')).toBeInTheDocument();
   });
 
   it('a TEAMLESS expert (between-rounds joiner) never gets the manual — restriction bypass guard (review 9.1)', () => {

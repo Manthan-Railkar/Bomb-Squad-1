@@ -36,9 +36,23 @@ interface ManualViewerProps {
    * search / arrow navigation).
    */
   assignedChapterIds?: string[] | null;
+  /**
+   * Spectator Lounge follow-only mode (Story 9.4). When this prop is PRESENT (a
+   * string chapterId, or `null`), the viewer mirrors THAT chapter read-only: the
+   * sidebar, `/`-search, and prev/next arrows are gone, the local
+   * `uiStore.manualChapterId` is ignored, and it NEVER writes a position
+   * (`publishManualPosition` is never called — the spectator has no own position).
+   * A `null`/unknown id renders a "waiting for the Expert…" placeholder (fail-open).
+   * ABSENT (`undefined`) ⇒ the full, navigable Expert viewer — the default,
+   * regression-critical path — is completely unchanged.
+   */
+  followChapterId?: string | null;
 }
 
-export default function ManualViewer({ chapters, assignedChapterIds }: ManualViewerProps) {
+export default function ManualViewer({ chapters, assignedChapterIds, followChapterId }: ManualViewerProps) {
+  // Follow mode is keyed on the prop being PROVIDED at all (SpectatorLounge always
+  // passes a string or null; the Expert viewer omits it entirely → undefined).
+  const isFollow = followChapterId !== undefined;
   const storedChapterId = useUiStore((s) => s.manualChapterId);
   const manualLocale = useUiStore((s) => s.manualLocale);
   const setManualLocale = useUiStore((s) => s.setManualLocale);
@@ -61,20 +75,24 @@ export default function ManualViewer({ chapters, assignedChapterIds }: ManualVie
     ? chapters.filter((c) => assignedChapterIds!.includes(c.chapterId))
     : chapters;
 
-  // Resolve the effective chapter through the NAVIGABLE set: stored position if
-  // it is still navigable, else the first navigable chapter. This also guards a
-  // stored id that points at a now-locked chapter (navigable last round) — it
-  // falls back to the first assigned chapter rather than showing a locked one.
-  const current =
-    navigable.find((c) => c.chapterId === storedChapterId) ?? navigable[0] ?? null;
+  // Resolve the effective chapter. Follow mode (Story 9.4): the chapter is forced
+  // to `followChapterId` from the FULL chapter list, ignoring the local stored
+  // position entirely. Otherwise (Expert path): the stored position if still
+  // navigable, else the first navigable chapter (also guards a now-locked stored id).
+  const current = isFollow
+    ? (followChapterId != null ? chapters.find((c) => c.chapterId === followChapterId) ?? null : null)
+    : navigable.find((c) => c.chapterId === storedChapterId) ?? navigable[0] ?? null;
 
   // Assert the resolved position into the observable store once it differs
   // (first open / stale id), so spectator mirroring never sees null mid-view.
+  // Story 9.4: a follow-only pane must NEVER write a position (it has none of its
+  // own — it mirrors the Expert), so this is skipped in follow mode.
   useEffect(() => {
+    if (isFollow) return;
     if (current !== null && current.chapterId !== storedChapterId) {
       publishManualPosition(current.chapterId);
     }
-  }, [current, storedChapterId]);
+  }, [isFollow, current, storedChapterId]);
 
   const selectChapter = (chapterId: string) => {
     if (current !== null && scrollRef.current !== null) {
@@ -93,7 +111,9 @@ export default function ManualViewer({ chapters, assignedChapterIds }: ManualVie
   }, [current]);
 
   // Global keys: arrows / PageUp-PageDown flip chapters, `/` opens search.
+  // Story 9.4: a follow-only pane is not navigable — no key bindings at all.
   useEffect(() => {
+    if (isFollow) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (isTextEntryTarget(event.target)) return;
       if (current === null) return;
@@ -126,12 +146,54 @@ export default function ManualViewer({ chapters, assignedChapterIds }: ManualVie
     // render but reads only refs + props, so the closure captured here stays
     // correct as long as `current`/`chapters`/`assignedChapterIds` are in the dep
     // set (the last so arrow nav re-routes through a changed navigable set).
-  }, [chapters, current, assignedChapterIds]);
+  }, [isFollow, chapters, current, assignedChapterIds]);
 
   // Focus the search input the moment it opens (keyboard-first flow).
   useEffect(() => {
     if (searchOpen) searchInputRef.current?.focus();
   }, [searchOpen]);
+
+  // Story 9.4: follow-only render. One read-only sheet mirroring the Expert's
+  // chapter — no sidebar, no search, no arrows, no position writes. The outer
+  // Expert-name/lock header + card framing belong to SpectatorLounge (mockup 5b);
+  // this fills its card and owns the single scroll region over the page content.
+  if (isFollow) {
+    if (current === null) {
+      return (
+        <div
+          className="grid h-full place-items-center rounded-sm border border-dashed bg-surface-manual/40 px-6 py-8 text-center font-body text-sm text-ink-muted"
+          style={{ borderColor: '#C9BC9D' }}
+          data-testid="lounge-manual-waiting"
+        >
+          Hasn&rsquo;t opened the manual yet.
+        </div>
+      );
+    }
+    const followIndex = chapters.findIndex((c) => c.chapterId === current.chapterId) + 1;
+    return (
+      <article
+        className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-sm border bg-surface-manual text-ink-manual"
+        style={{ borderColor: '#C9BC9D', padding: '28px 40px 20px' }}
+        data-testid="lounge-manual-pane"
+      >
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-50 mix-blend-multiply"
+          style={{ backgroundImage: PAPER_GRAIN_URL }}
+        />
+        <div className="mb-3 flex items-baseline gap-3 border-b-2 pb-2" style={{ borderColor: '#211A12' }}>
+          <span className="font-manual text-[34px] font-bold leading-none text-bakelite">{followIndex}</span>
+          <h2 className="font-manual text-[26px] font-bold tracking-[-0.01em]">{current.chapterTitle}</h2>
+        </div>
+        {/* THE single scrolling region for this card (DESIGN.md: no nested scroll). */}
+        <div className="relative min-h-0 flex-1 overflow-y-auto pr-2">
+          {current.pages.map((page, i) => (
+            <PageRenderer key={i} page={page} />
+          ))}
+        </div>
+      </article>
+    );
+  }
 
   if (current === null) {
     return (

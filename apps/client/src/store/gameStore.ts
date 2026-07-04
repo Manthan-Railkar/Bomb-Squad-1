@@ -8,6 +8,7 @@ import type {
   StrikePayload,
   RoundOutcome,
   ScoreboardPayload,
+  ExpertManualPositionPayload,
 } from '@bomb-squad/shared';
 
 /**
@@ -85,6 +86,16 @@ interface GameState {
   lifelineToasts: LifelineToast[];
   /** Monotonic counter backing deterministic toast ids (never Math.random/Date.now). */
   lifelineToastSeq: number;
+  /**
+   * The Spectator Lounge multiview map (Story 9.4): playerId → the chapterId that
+   * Expert is currently on. Accumulated from the session-wide EXPERT_MANUAL_POSITION
+   * broadcasts (each frame updates exactly ONE Expert's entry, keyed by durable
+   * playerId) plus the per-Expert replay a mid-round joiner receives. Drives one
+   * read-only follow pane per active-team Expert. Reset to `{}` on setBomb (new
+   * round) AND clearSession so a prior round's pages never bleed into panes.
+   * Empty/absent entry ⇒ that Expert "hasn't opened the manual" placeholder.
+   */
+  expertManualPositions: Record<string, string>;
   setSession: (session: SessionState) => void;
   /** Record this client's durable playerId (from SESSION_IDENTITY or a stored seed). */
   setMyPlayerId: (playerId: string | null) => void;
@@ -107,6 +118,8 @@ interface GameState {
   setStrike: (payload: StrikePayload) => void;
   /** Set (or clear, with `null`) this Expert's restricted chapter set (Story 9.1). */
   setAssignedChapters: (chapterIds: string[] | null) => void;
+  /** Merge one Expert's current chapter into the multiview map (Story 9.4). */
+  setExpertManualPosition: (payload: ExpertManualPositionPayload) => void;
   /** Set this spectator's lifeline-token balance from the LIFELINE_TOKENS event (Story 9.2). */
   setLifelineTokens: (count: number) => void;
   /** Enqueue a Bomb-Room lifeline toast (Story 9.3); assigns a deterministic id. */
@@ -139,6 +152,7 @@ export const useGameStore = create<GameState>((set) => ({
   lifelineTokens: 0,
   lifelineToasts: [],
   lifelineToastSeq: 0,
+  expertManualPositions: {},
 
   setSession: (session) => set({ session }),
   setMyPlayerId: (myPlayerId) => set({ myPlayerId }),
@@ -155,6 +169,7 @@ export const useGameStore = create<GameState>((set) => ({
       lifelineTokens: 0,
       lifelineToasts: [],
       lifelineToastSeq: 0,
+      expertManualPositions: {},
     }),
   clearRemovalNotice: () => set({ removalNotice: null }),
   // A fresh bomb (BOMB_INIT) means a new round — clear any prior resolution AND
@@ -166,7 +181,16 @@ export const useGameStore = create<GameState>((set) => ({
   // that landed while ActiveRound was unmounted (round-end race) would otherwise
   // linger in the queue and pop up, minutes stale, when the next round mounts.
   setBomb: (bomb) =>
-    set({ bomb, resolution: null, scoreboard: null, assignedChapterIds: null, lifelineToasts: [] }),
+    set({
+      bomb,
+      resolution: null,
+      scoreboard: null,
+      assignedChapterIds: null,
+      lifelineToasts: [],
+      // Story 9.4: a new round starts with blank multiview panes; live navs (and a
+      // mid-round-join replay) refill them. Same round-boundary reset as above (R4).
+      expertManualPositions: {},
+    }),
   setTimer: (timer) => set({ timer }),
   setResolution: (resolution) => set({ resolution }),
   setScoreboard: (scoreboard) => set({ scoreboard }),
@@ -201,6 +225,14 @@ export const useGameStore = create<GameState>((set) => ({
     }),
 
   setAssignedChapters: (assignedChapterIds) => set({ assignedChapterIds }),
+
+  // Merge ONE Expert's latest chapter (Story 9.4 multiview). Each broadcast/replay
+  // frame carries a single { chapterId, playerId }; keying by durable playerId means
+  // a re-nav overwrites only that Expert's entry and never disturbs another's pane.
+  setExpertManualPosition: ({ chapterId, playerId }) =>
+    set((s) => ({
+      expertManualPositions: { ...s.expertManualPositions, [playerId]: chapterId },
+    })),
 
   // Standing balance — set only from the server's LIFELINE_TOKENS event. Deliberately
   // NOT touched by setBomb (tokens persist across rounds); cleared only by clearSession.

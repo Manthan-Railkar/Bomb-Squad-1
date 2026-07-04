@@ -57,11 +57,19 @@ export const ModuleBay = memo(function ModuleBay({
   slot,
   moduleId,
   typesOnly = false,
+  readOnly = false,
 }: {
   slot: ModuleSlot;
   moduleId: string;
   /** Preparation placeholder mode (Story 4.6): type tag, value-free face, inert. */
   typesOnly?: boolean;
+  /**
+   * Read-only mirror mode (Story 9.4 Spectator Lounge): drop the faceplate
+   * click-to-focus so a spectator has no Defuser camera-focus control (module
+   * interaction is separately neutralised by the ambient read-only flag the
+   * gesture helpers read). Defaults false.
+   */
+  readOnly?: boolean;
 }) {
   // Scoped reactive selector (snapshot-rate, not per-frame): primitive value,
   // so unrelated store broadcasts don't re-render this bay.
@@ -110,9 +118,12 @@ export const ModuleBay = memo(function ModuleBay({
 
   // In prep the bay is inert: no click-to-focus, no module interaction
   // (Story 4.6 — "verify a click does nothing"). Orbit/zoom still orient.
-  const onClick = typesOnly
-    ? undefined
-    : (event: ThreeEvent<MouseEvent>) => {
+  // Story 9.4: a read-only lounge bay likewise drops click-to-focus (AC-1 "no
+  // Defuser camera-focus controls") — orbit/zoom remain via CameraRig.
+  const onClick =
+    typesOnly || readOnly
+      ? undefined
+      : (event: ThreeEvent<MouseEvent>) => {
         // Shared with the module interaction helpers (5.1) so click-to-focus and
         // module clicks use the same button/drag-tolerance contract.
         if (!isPrimaryActivation(event.button, event.delta)) return;

@@ -34,7 +34,7 @@ import type { RedisStore } from '../state/redis.js';
 import { roundKey, sessionKey, timerKey } from '../state/keys.js';
 import {
   sessionRoom,
-  teamRoom,
+  bombAudience,
   type SessionIOServer,
   type SessionLog,
   type LoungeBridgePort,
@@ -256,7 +256,9 @@ async function resolveRoundCeremony(
   // both failure outcomes (DETONATED vs TIME EXPIRED is a client-side label, not
   // a 3rd event).
   const event = outcome === 'defused' ? 'BOMB_DEFUSED' : 'BOMB_EXPLODED';
-  deps.io.to(teamRoom(sessionId, teamId)).emit(event, { teamId, elapsedMs: displayedElapsedMs });
+  // Story 9.4: dual-target the lounge so a read-only spectator sees the same
+  // resolution banner (DEFUSED / EXPLODED) the active team's Bomb Room gets.
+  deps.io.to(bombAudience(sessionId, teamId)).emit(event, { teamId, elapsedMs: displayedElapsedMs });
 
   deps.log.info({ sessionId, teamId, outcome, displayedElapsedMs, scoredElapsedMs }, 'round resolved');
 

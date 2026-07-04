@@ -1,9 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CLICK_DRAG_TOLERANCE_PX,
   isPrimaryActivation,
   moduleClickHandlers,
   modulePressHoldHandlers,
+  setModuleInteractionReadOnly,
+  isModuleInteractionReadOnly,
   type ModulePointerEvent,
 } from '../interaction.js';
 
@@ -105,5 +107,56 @@ describe('modulePressHoldHandlers', () => {
       handlers.onPointerDown(event({ target: {} }));
       handlers.onPointerUp(event({ target: undefined }));
     }).not.toThrow();
+  });
+});
+
+describe('read-only gate (Story 9.4 — Spectator Lounge)', () => {
+  // The ambient flag is process-global; reset after each test so no leakage.
+  afterEach(() => setModuleInteractionReadOnly(false));
+
+  it('moduleClickHandlers({ readOnly: true }) never activates but still swallows the event', () => {
+    const onActivate = vi.fn();
+    const e = event();
+    moduleClickHandlers(onActivate, { readOnly: true }).onClick(e);
+    expect(onActivate).not.toHaveBeenCalled();
+    expect(e.stopPropagation).toHaveBeenCalled(); // nothing bubbles to camera-focus
+  });
+
+  it('the ambient read-only flag neutralises a plain moduleClickHandlers (no opts)', () => {
+    const onActivate = vi.fn();
+    setModuleInteractionReadOnly(true);
+    expect(isModuleInteractionReadOnly()).toBe(true);
+    const e = event();
+    moduleClickHandlers(onActivate).onClick(e); // no opts — reads the ambient flag
+    expect(onActivate).not.toHaveBeenCalled();
+    expect(e.stopPropagation).toHaveBeenCalled();
+  });
+
+  it('an explicit readOnly:false overrides an ambient read-only flag', () => {
+    const onActivate = vi.fn();
+    setModuleInteractionReadOnly(true);
+    moduleClickHandlers(onActivate, { readOnly: false }).onClick(event());
+    expect(onActivate).toHaveBeenCalledTimes(1);
+  });
+
+  it('modulePressHoldHandlers no-ops press/release under read-only but still swallows', () => {
+    const onPress = vi.fn();
+    const onRelease = vi.fn();
+    const setPointerCapture = vi.fn();
+    const handlers = modulePressHoldHandlers(onPress, onRelease, { readOnly: true });
+    const down = event({ target: { setPointerCapture } });
+    handlers.onPointerDown(down);
+    handlers.onPointerUp(event());
+    expect(onPress).not.toHaveBeenCalled();
+    expect(onRelease).not.toHaveBeenCalled();
+    expect(setPointerCapture).not.toHaveBeenCalled(); // no capture on a read-only bomb
+    expect(down.stopPropagation).toHaveBeenCalled();
+  });
+
+  it('the ambient flag defaults false so the Defuser path is unchanged (regression R2)', () => {
+    expect(isModuleInteractionReadOnly()).toBe(false);
+    const onActivate = vi.fn();
+    moduleClickHandlers(onActivate).onClick(event());
+    expect(onActivate).toHaveBeenCalledTimes(1);
   });
 });

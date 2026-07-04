@@ -127,15 +127,18 @@ describe('MANUAL_NAVIGATE handler', () => {
 
     const payload = await seenByFacilitator;
     // Story 2.7: the payload carries the durable playerId, not the rotating socket.id.
+    // The per-nav BROADCAST is unchanged by Story 9.4 (still { chapterId, playerId }).
     expect(payload).toEqual({ chapterId: 'wires', playerId: expertId });
 
+    // Story 9.4: persisted as a per-Expert MAP (Record<playerId, chapterId>), not the
+    // old single { chapterId, playerId } object — so a multiview spectator can be
+    // replayed every Expert's page.
     expect(JSON.parse(store.data.get(manualPositionKey(sessionId))!)).toEqual({
-      chapterId: 'wires',
-      playerId: expertId,
+      [expertId]: 'wires',
     });
   });
 
-  it('last navigation wins on the persisted position (locked-mirror, GDD A3)', async () => {
+  it("one Expert navigating twice updates only that Expert's map entry (Story 9.4)", async () => {
     const { sessionId, joinCode } = await createSession(facilitator);
     const expert = await server.connectClient();
     const expertId = await joinSession(expert, joinCode, 'Devon', 'expert');
@@ -147,9 +150,9 @@ describe('MANUAL_NAVIGATE handler', () => {
     expert.emit('MANUAL_NAVIGATE', { chapterId: 'memory' });
     await second;
 
+    // The map holds this Expert's latest chapter (a re-nav overwrites only its entry).
     expect(JSON.parse(store.data.get(manualPositionKey(sessionId))!)).toEqual({
-      chapterId: 'memory',
-      playerId: expertId,
+      [expertId]: 'memory',
     });
   });
 
@@ -198,11 +201,14 @@ describe('MANUAL_NAVIGATE handler', () => {
     // Build the failing store via overrides, but only fail manual-position writes —
     // session create/join must still work.
     const failing = createMemoryRedisStore();
-    const baseSet = failing.setJSON.bind(failing);
-    failing.setJSON = async (key, value) => {
+    // Story 9.4: the manual position is now persisted via updateJSON (per-Expert map
+    // merge), so fail THAT for the manualPosition key only — session create/join, which
+    // also use updateJSON (CAS on the session key), must still work.
+    const baseUpdate = failing.updateJSON.bind(failing);
+    failing.updateJSON = ((key, mutate, opts) => {
       if (key.endsWith(':manualPosition')) throw new Error('redis down');
-      await baseSet(key, value);
-    };
+      return baseUpdate(key, mutate, opts);
+    }) as typeof failing.updateJSON;
     const failServer = await startTestSocketServer((io) => {
       registerSessionHandlers(io, {
         redis: failing,
