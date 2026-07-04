@@ -77,12 +77,13 @@ The timer and strike limit apply to the whole team. Failure is collective. A wro
 Both teams receive identical module layouts with independently randomised values. The relay race format ensures every player defuses at least once. The Facilitator controls pacing, difficulty, and round count. Outcomes are determined by team performance, not luck of the draw.
 
 **4. The bomb is always new; the team gets better.**
-No two sessions produce the same bomb. Module combinations, values, and wire layouts are randomised each round, so every defusal is a fresh communication problem. The ceiling rises as teams build shared language and trust across sessions — a team's third game is faster than their first not because the modules got easier, but because the team did.
+No two sessions produce the same bomb. Module combinations, values, and wire layouts are randomised each round, so every defusal is a fresh communication problem. The ceiling rises as teams build shared language and trust across sessions — a team's third game is faster than their first not because the modules got easier, but because the team did. With randomized rulesets, the *manual* is new each session too: what compounds across sessions is communication skill, never memorized answers.
 
 ### Core Gameplay Loop
 
 ```
 [Lobby] Facilitator creates session, shares link + join code; players join; teams assigned
+  (the Facilitator may assign themselves to a team to play)
   → [Preparation] All players browse manual; Defuser sees module types (not values)
   →   Prep phase is Facilitator-controlled [ASSUMPTION: 2–5 min default]
   → [Round start] Facilitator configures round (difficulty, module count, timer, modifiers)
@@ -151,11 +152,15 @@ No free-text input. Facilitator can disable per session.
 
 Lifeline overlay behaviour: the prompt is displayed as a non-blocking banner to both Defuser and Experts for 8 seconds, then auto-dismisses. [ASSUMPTION: 8-second duration; to be validated during playtesting.] Neither Defuser nor Expert can dismiss it early — it is informational, not interactive.
 
+#### Randomized Rulesets
+
+Module rule *structures* are fixed (e.g. Wires is always "N wires → ordered condition list → cut position"), but the concrete parameters — conditions, orderings, mappings, tables — are deterministically generated per session from a `rulesetSeed`. Both teams and all rounds in a session share one ruleset; the digital manual renders the active ruleset, so Experts study the session's actual rules during Preparation. Every generator enforces module-specific solvability invariants (validated by construction + property tests). The KTANE v1 manual tables are preserved as the "classic" ruleset — encoded as data and pinned by golden tests. Defeats cross-session rule memorization: veterans keep their communication skill, not their answer key.
+
 ---
 
 ### Module Mechanics
 
-All rules are sourced from the *Keep Talking and Nobody Explodes Bomb Defusal Manual, v1 (verification code 241)*.
+All rule **structures** are sourced from the *Keep Talking and Nobody Explodes Bomb Defusal Manual, v1 (verification code 241)*; the v1 tables constitute the "classic" ruleset. Concrete rule parameters are session-generated (see Randomized Rulesets). The tables below document the classic ruleset and the authoritative structure of each module's rules.
 
 #### Global Bomb Information
 
@@ -490,6 +495,10 @@ A grid with two circular markers identifying which of 9 maze layouts to use. Nav
 **Facilitator:**
 - Dashboard UI, mouse only
 - Session configuration, team assignment, round control, retry trigger, spectator chat toggle
+- Opt-in play: the Facilitator may assign themselves to a team with a role, like any
+  player. While their team's round is live they play that role; facilitator controls
+  remain available as a compact overlay (pause/resume) with the full dashboard between
+  rounds. Removes the need for a separate hosting tab in single-team / 2-player sessions.
 
 **Spectator:**
 - Manual page viewing (read-only, locked to the active Expert's current page — see Assumption A3, resolved)
@@ -514,7 +523,7 @@ V1 ships 11 standard modules spanning three complexity tiers. See *Module Pool a
 
 Relay race format. Five phases: Lobby → Preparation → Round loop → Between rounds → Session end. See *Core Gameplay Loop* for the full sequence.
 
-**Rotation:** Defuse order is Facilitator-chosen; default is team join order. Every player defuses at least once before the session ends.
+**Rotation:** Defuse order is Facilitator-chosen; default is team join order. Every player defuses at least once before the session ends. A Facilitator who has joined a team is part of that team's rotation and defuses like any player.
 
 **Odd team sizes:** Shorter team plays one extra round (Facilitator assigns a volunteer Defuser) to equalise round count.
 
@@ -781,6 +790,8 @@ No mobile app in V1. No Electron. Browser-only.
 | A7 | Identical module types with independently randomised values produces equivalent difficulty for both teams | Specific value combinations (e.g. rare Morse words, difficult Memory sequences) may create unfair variance — flag for playtesting |
 | A8 | Lifeline overlay duration of 8 seconds is legible and non-disruptive during active defusal | Duration adjusted up or down based on playtesting |
 | A9 | Preparation phase default of 2–5 minutes is sufficient for a first-time team to orient to the manual | Duration may need adjustment based on playtesting with inexperienced teams |
+| A10 | Structure-preserving rule generation produces rulesets of comparable difficulty to the classic manual | Difficulty variance across sessions → constrain generator parameter ranges after playtesting |
+| A11 | The 2–5 min prep default is sufficient for Experts to orient to a fresh (session-generated) manual | Raise prep default when rulesets are randomized |
 
 **Dependencies:**
 - LiveKit Server (self-hosted)

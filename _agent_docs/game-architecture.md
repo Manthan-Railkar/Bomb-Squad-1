@@ -271,10 +271,13 @@ export interface ModuleState<S> {
 Fairness (both teams get identical layouts, independent values) and retry-reproducibility both depend on a deterministic seed chain. No `Math.random()` ever participates in generation.
 
 ```
+rulesetSeed  = hash(sessionId + ":ruleset")           // per-session RULES (Epic 11) — both teams, all rounds share one ruleset
 templateSeed = hash(sessionId + roundNumber)          // both teams share this → identical layout
 teamSeed     = hash(templateSeed + teamId)            // per-team divergence → independent values
 moduleSeed   = hash(teamSeed + moduleIndex)           // per-module value seed
 ```
+
+- **Rules vs values** (Epic 11, sprint-change-proposal-2026-07-04): rules rotate **per session** via `rulesetSeed`; values rotate per team per round via `teamSeed`/`moduleSeed`. Both teams always play the same ruleset — fairness at the rules layer is structural, like layout fairness at the template layer.
 
 - `generate(seed, ctx)` is **synchronous and CPU-cheap** — all modules generated at round start in one pass.
 - Bomb metadata (serial number, batteries, indicators, ports) is generated from `teamSeed` before modules, then frozen into a read-only `BombContext` passed to every module's `generate` and `reduce`.
@@ -454,6 +457,8 @@ All contracts are typed in `packages/shared/src/events/` and shared verbatim bet
 
 **Client → Server (`ClientToServerEvents`):**
 
+> **Story 9.5:** "Facilitator only" below means the holder of `SessionState.facilitatorPlayerId` (the durable-id flag set once at `SESSION_CREATE`), resolved via the shared `isSessionFacilitator(state, playerId)` predicate — **not** `role === 'facilitator'`. The Facilitator may opt onto a team and take a play role while retaining every authority below, because authority is keyed on the flag, not the roster role.
+
 | Event | Payload | Authority check |
 | ----- | ------- | --------------- |
 | `SESSION_CREATE` | `RoundConfig` (Facilitator) | Facilitator only |
@@ -608,6 +613,10 @@ Test boundaries are enforced from day one (`project-context.md`).
 ### ADR-007 — Voice as an independent, non-blocking subsystem
 **Decision:** LiveKit voice runs independently of the game socket; the game stays playable if voice drops. **Status:** Accepted.
 **Context:** WebRTC behind corporate NAT is the highest technical risk (GDD A4); voice must degrade gracefully. **Consequences:** separate connection state + microcopy; listen-only spectator enforced at token grant; role-change always re-mints tokens.
+
+### ADR-008 — Structure-preserving randomized rulesets (rules-as-data)
+**Decision:** Module rule *structures* stay fixed; rule *parameters* are generated per session from `rulesetSeed = hash(sessionId + ":ruleset")` over a shared `RuleSet` data layer in `packages/shared/src/rules/`; the KTANE v1 manual is encoded as the "classic" ruleset and pinned by golden tests; generators enforce per-module solvability invariants (validators + property tests, deterministic bounded retry). **Status:** Accepted (Jay, 2026-07-04; sprint-change-proposal-2026-07-04, Epic 11).
+**Context:** Fixed manual rules become memorized across sessions, eroding the manual-reading core loop. **Alternatives:** hand-curated rotating rule sets (authoring effort scales, still memorizable; subsumed — a curated set is just blessed seeds); per-round rotation (kills prep value, adds mid-session chaos). **Consequences:** solve/reducer/manual all consume one rule dataset (manual always matches server truth); one ruleset per session shared by both teams (fairness); FR19 per-team value randomization unchanged; retry/reattach reproducible from `sessionId`.
 
 ---
 

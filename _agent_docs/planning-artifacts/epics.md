@@ -84,6 +84,14 @@ This document provides the complete epic and story breakdown for Bomb Squad, dec
 **Audio**
 - FR47: SFX for game states — ticking countdown (tempo rises with strike escalation), module-typed solve chime, strike sound, explosion, defuse fanfare, lobby ambient; no music during rounds.
 
+**Facilitator Opt-In Play** *(added 2026-07-04, sprint-change-proposal-2026-07-04)*
+- FR48: The Facilitator may opt in to play by assigning themselves to a team and role; facilitator authority (round control, pause, retry) is a session-level flag decoupled from team membership and is retained (as a compact overlay mid-round) while playing.
+
+**Randomized Rulesets** *(added 2026-07-04, sprint-change-proposal-2026-07-04)*
+- FR49: Every module's solve logic, reducer rule lookups, and manual pages derive from a shared `RuleSet` data structure (rules-as-data); the classic KTANE v1 ruleset is encoded as data and pinned by golden tests asserting behavior identical to the previously hardcoded rules.
+- FR50: A per-session `rulesetSeed = hash(sessionId + ":ruleset")` extends the seed chain; one ruleset per session, shared by both teams and all rounds (fairness); the manual renders the active ruleset; retry and the spectator manual-mirror reproduce it exactly. Bomb values remain independently randomized per team per round (FR19 unchanged).
+- FR51: Every rule generator enforces its module's invariants — first-match totality with guaranteed catch-all (Wires, Button), permutation validity (Simon, Who's on First; Morse word↔frequency bijection), unique-column property (Keypads), well-founded cross-stage references (Memory), exactly-one-reachable-word (Passwords), connected mazes — via pure validators with deterministic bounded retry (derived sub-seeds), covered by property tests.
+
 ### NonFunctional Requirements
 
 - NFR1: 60 fps sustained on a mid-range laptop over a 10-minute active session; any frame-budget violation is treated as a bug (gate from day one).
@@ -122,6 +130,7 @@ _Technical requirements from the Architecture document that shape implementation
 - AR14: Error handling — reducers never throw (guard → no-op); handlers schema-validate (TypeBox) + bounds-check at the boundary, returning typed `ERROR` events; connection loss → pause/retry modal; voice loss → dismissible banner.
 - AR15: Structured JSON logs keyed by `sessionId`/`teamId`/`roundNumber`; never log join codes, tokens, or bomb solutions; voice subsystem logs separately.
 - AR16: Testing boundaries — pure logic (reducers/generate/solve) unit-tested in Node with Jest (zero infra); socket handlers via a `TestSocketServer` wrapper; R3F components by Playwright visual regression only; voice against a real LiveKit container in CI. Every module reducer tests happy-path, wrong-interaction, idempotency, immutability (frozen input), guard clauses, and reset.
+- AR17: Ruleset types, generators, and validators live in `packages/shared/src/rules/` — pure TypeScript, seeded, synchronous, zero infra imports; `getManualPages(ruleset)` renders from the same data the server solves against. Bomb solutions are still never sent to the client; clients receive only manual-visible rule data (public to Experts by design). *(added 2026-07-04)*
 
 ### UX Design Requirements
 
@@ -193,6 +202,10 @@ _Actionable design work items extracted from DESIGN.md (visual identity) and EXP
 - FR45: Epic 8 — Time-based cumulative scoring
 - FR46: Epic 8 — Between-round + final scoreboard
 - FR47: Epic 10 — Game-state SFX (no music in rounds)
+- FR48: Epic 9 — Facilitator opt-in play
+- FR49: Epic 11 — Rules-as-data + classic ruleset golden-pinned
+- FR50: Epic 11 — Per-session ruleset seed chain & fairness
+- FR51: Epic 11 — Rule-generator invariants + property tests
 
 ## Epic List
 
@@ -229,12 +242,16 @@ The full relay race: Facilitator configures and runs rounds, the server owns the
 **FRs covered:** FR8, FR9, FR10, FR11, FR12, FR13, FR14, FR15, FR19, FR33, FR34, FR43, FR44, FR45, FR46 — AR6, AR7, AR11, UX-DR11, UX-DR12
 
 ### Epic 9: Advanced Features
-The two Facilitator-toggleable modifiers: Asymmetric Expert Roles (round-robin chapter allocation) and Spectator Lifelines (token economy + hint toasts).
-**FRs covered:** FR37, FR42 — UX-DR6
+Facilitator-toggleable/opt-in modifiers: Asymmetric Expert Roles (round-robin chapter allocation), Spectator Lifelines (token economy + hint toasts), and Facilitator Opt-In Play (the host joins a team and plays).
+**FRs covered:** FR37, FR42, FR48 — UX-DR6
 
 ### Epic 10: Polish & Hardening
 SFX wiring, 60fps profiling, WebRTC reliability behind symmetric NAT, accessibility gate sign-off, and playtest instrumentation.
 **FRs covered:** FR47 — NFR1, NFR3 (A4), NFR5, NFR11, NFR12, UX-DR14, UX-DR15
+
+### Epic 11: Randomized Rulesets
+Structure-preserving live generation of module rules: rules become data (`RuleSet`), the KTANE v1 manual becomes the golden-pinned "classic" ruleset, and a per-session `rulesetSeed` generates fresh, solvability-validated rule parameters that the manual renders — defeating cross-session rule memorization. *(Added 2026-07-04, sprint-change-proposal-2026-07-04; sequenced after Epic 10.)*
+**FRs covered:** FR49, FR50, FR51 — AR17, A10, A11
 
 ---
 
@@ -1457,25 +1474,25 @@ As a Spectator,
 I want a composed lounge screen showing the active team's bomb and the Expert's current manual page,
 So that I can follow exactly what the team is working on and decide when to spend a lifeline.
 
-> **Depends on Story 8.11** (single active bomb) and **Story 3.7** (lounge audio bridge): the split-pane "active team's bomb" view and the resting-team audience both assume one live bomb at a time. This is the canonical surface a resting-team player and the facilitator use while spectating.
+> **Depends on Story 8.11** (single active bomb) and **Story 3.7** (lounge audio bridge): the split-pane "active team's bomb" view and the resting-team audience both assume one live bomb at a time. This is the canonical surface a resting-team player **and the facilitator when not on the active team** use while spectating (Jay 2026-07-03: the facilitator watches the lounge too; the *teamless, non-playing* facilitator never earns/spends lifelines, so its HUD hides the token counter and Send-Tip — but per Story 9.5 a facilitator who has **opted onto a team** plays their role like any player, and is only in the lounge when their team is resting, where they DO earn/spend as a resting player).
 
 **Acceptance Criteria:**
 
-**Given** I am a Spectator during an active round
+**Given** I am a Spectator (or a resting-team player, or the Facilitator) during an active round
 **When** the Spectator Lounge renders
-**Then** it shows a split-pane layout — the active team's read-only bomb scene (reusing the Epic 4 renderer with no module interaction and no Defuser camera-focus controls) on one side and a read-only manual pane on the other.
+**Then** it shows a split-pane layout — the active team's read-only bomb scene (reusing the Epic 4 renderer with no module interaction and no Defuser camera-focus controls) on one side and the read-only Expert manual **multiview** on the other.
 
-**Given** the manual pane (GDD A3 resolved: **locked to the Expert**, not free-navigate)
-**When** the active Expert changes chapter/page
-**Then** my manual pane mirrors the Expert's current chapter/page and I cannot navigate it myself (read-only, follow-only).
+**Given** the manual multiview (GDD A3 resolved: **locked to the Experts**, not free-navigate; Jay 2026-07-03: **multiview supersedes the earlier most-recently-navigated single pane**)
+**When** the active team has one or more Experts
+**Then** I see **one read-only pane per active-team Expert**, each headed with that Expert's name and mirroring THAT Expert's current chapter/page; when an Expert navigates, only their pane updates; I cannot navigate any pane myself (read-only, follow-only). An Expert who has not opened the manual yet shows a placeholder pane.
 
 **Given** a team with multiple Experts (e.g. Asymmetric Expert Roles enabled)
 **When** more than one Expert is navigating
-**Then** my pane mirrors the most-recently-navigated Expert's page, so I follow whichever Expert last turned a page.
+**Then** all their pages are visible at once — one pane each, updating independently — so I can follow every Expert simultaneously.
 
 **Given** the manual mirroring
 **When** it is implemented
-**Then** the Expert manual viewer (Story 5.2) broadcasts the Expert's current page position to the Spectator Lounge via a typed event, and the spectator pane is driven by that broadcast (the spectator never controls navigation).
+**Then** the Expert manual viewer (Story 5.2) broadcasts each Expert's current page position via the typed `EXPERT_MANUAL_POSITION { chapterId, playerId }` event, the server persists the position **per Expert** and replays every Expert's position to a spectator entering mid-round, and each spectator pane is driven only by those broadcasts (the spectator never controls navigation).
 
 **Given** the active team's bomb state changes
 **When** a `ModuleUpdate` broadcasts
@@ -1489,7 +1506,43 @@ So that I can follow exactly what the team is working on and decide when to spen
 **When** I am in the lounge
 **Then** I hear the Bomb Room as listen-only (Story 3.3) and cannot publish.
 
-_Covers the GDD Spectator controls (read-only manual viewing) + EXPERIENCE.md IA item 4 (Spectator Lounge split-pane); relates to FR39, FR42. Resolves readiness GAP-1. **Note:** locked-mirror mode (A3) adds a requirement on Story 5.2 to expose/broadcast the Expert's current page position._
+_Covers the GDD Spectator controls (read-only manual viewing) + EXPERIENCE.md IA item 4 (Spectator Lounge split-pane); relates to FR39, FR42. Resolves readiness GAP-1. **Note:** locked-mirror mode (A3) adds a requirement on Story 5.2 to expose/broadcast the Expert's current page position. **Amended 2026-07-03 (Jay):** (1) multi-Expert manual = MULTIVIEW (one pane per Expert, all visible) — supersedes the original "most-recently-navigated" single-pane rule and forces per-Expert position persistence + replay-on-join; (2) the Facilitator is part of the lounge audience; (3) the voice AC reads through Story 3.7's shipped bidirectional lounge ("cannot publish" = never into a Bomb Room; lounge-internal talk is allowed). The `5. Spectator Lounge.html` mockup predates the multiview — manual-region layout needs a UX pass._
+
+---
+
+### Story 9.5: Facilitator Opt-In Play
+
+As a Facilitator,
+I want to optionally join a team and play while keeping my session controls,
+So that single-team and 2-player sessions don't need a separate hosting tab.
+
+> **Added 2026-07-04 (sprint-change-proposal-2026-07-04, FR48).** Design decisions (Jay): facilitator keeps controls mid-round as a compact overlay; facilitator authority becomes a session-level flag orthogonal to team/role membership. Builds on the durable-identity primitive (2.7), rotation/equalisation (8.9), sequential play (8.11), auto-pause (8.7), and voice re-mint (3.5/3.7). **Action item (RECONCILED 2026-07-04 in Story 9.5 Task 7):** Story 9.4's facilitator-watches-the-lounge note applies *when the Facilitator is not on the active team* — the §9.4 note above and 9.4's story file now carry this scoping.
+
+**Acceptance Criteria:**
+
+**Given** the lobby
+**When** the Facilitator assigns themselves to Team A or B with a role via the same `TEAM_ASSIGN` path as any player
+**Then** they appear in that team's roster with that role, and all facilitator-only authority gates (`ROUND_CONFIGURE`, `ROUND_START`, `FACILITATOR_PAUSE`/`RESUME`, `ROUND_RETRY`, `PLAYER_REMOVE`) keep resolving against the facilitator flag on their durable player id (Story 2.7) — never against "has no team".
+
+**Given** the Facilitator is on a team
+**When** the relay rotates
+**Then** they are part of that team's Defuser rotation like any player (reusing 8.9 rotation / `isRelayComplete` / equalisation unchanged).
+
+**Given** the Facilitator's team is the active team mid-round
+**When** they view their surface
+**Then** they play their role's surface (bomb or manual) with a compact facilitator overlay (pause/resume, confirm-guarded) instead of the full dashboard; the full dashboard returns between rounds and while their team is resting.
+
+**Given** relay rotation or turn flips change the Facilitator's effective context (active player ↔ resting/spectating ↔ between-rounds)
+**When** the transition applies
+**Then** their voice routes by played role — Bomb Room while on the active team, Spectator Lounge while resting (3.7/9.4) — with a fresh LiveKit token minted on every transition (3.5), never reused.
+
+**Given** the Facilitator is the active Defuser and disconnects mid-round
+**When** the drop is detected
+**Then** the existing auto-pause fires (8.7) and resume requires their reconnect (durable-id reattach) plus all players ready.
+
+**Given** a 2-player session (Facilitator + 1 player, single team)
+**When** a full session is played
+**Then** it runs end-to-end from two browser tabs total (no separate hosting tab) and the single-team scoreboard is unaffected.
 
 ---
 
@@ -1588,3 +1641,101 @@ So that we can validate balance assumptions and keep crash/desync rare.
 **Given** a full session under test
 **When** crash/desync is measured
 **Then** the rate is ≤ 1%.
+
+---
+
+## Epic 11: Randomized Rulesets
+
+Structure-preserving live generation of module rules. Rules become data (`RuleSet` in `packages/shared/src/rules/`); the KTANE v1 manual is preserved as the golden-pinned "classic" ruleset; a per-session `rulesetSeed = hash(sessionId + ":ruleset")` generates fresh rule parameters whose solvability invariants are enforced by validators + property tests; the digital manual renders the active ruleset. One ruleset per session, shared by both teams and all rounds (fairness); bomb *values* remain per-team per-round (FR19 unchanged). Defeats cross-session rule memorization. *(Added 2026-07-04, sprint-change-proposal-2026-07-04; decisions: structure-preserving live gen + per-session rotation — Jay. Sequenced after Epic 10.)* (FR49, FR50, FR51; AR17; GDD A10, A11)
+
+### Story 11.1: Rules-as-Data Refactor & Classic Ruleset
+
+As a developer,
+I want every hardcoded rule table extracted into a shared `RuleSet` data structure that solve logic, reducers, and manual pages consume,
+So that rules can vary by data without touching module logic, with zero behavior change.
+
+**Acceptance Criteria:**
+
+**Given** the 11 modules' rule tables (wire rules, Button decision list + strip rules, Keypads columns, Simon mappings, Memory stage tables, Morse word↔frequency map, Complicated Wires truth table + codes, Wire Sequences occurrence tables, Who's on First position grid + priority lists, Passwords word list, Maze layouts)
+**When** the refactor lands
+**Then** each is encoded as typed `RuleSet` data in `packages/shared/src/rules/` and every module's `solve.ts`, reducer rule lookup, and `getManualPages()` consumes that data — no rule literal remains inline in module logic.
+
+**Given** the classic KTANE v1 ruleset encoded as data
+**When** the golden test suite runs
+**Then** it pins behavior identical to the previously hardcoded rules for every module (representative solves, strikes, and manual-page content), and all existing module test suites stay green unchanged.
+
+**Given** `packages/shared/src/rules/`
+**When** its imports are inspected
+**Then** it is pure TypeScript — seeded, synchronous, zero infra/react imports (AR17).
+
+### Story 11.2: Ruleset Seed Chain & Session Wiring
+
+As a Facilitator and players,
+I want one deterministic ruleset generated per session that both teams play and the manual renders,
+So that rules are fresh each session but fair, reproducible, and studyable during prep.
+
+**Acceptance Criteria:**
+
+**Given** a session is created
+**When** the ruleset is derived
+**Then** `rulesetSeed = hash(sessionId + ":ruleset")` extends the existing seed chain, the generated ruleset is stored under the session's Redis namespace, and every round and both teams resolve rules against that single ruleset.
+
+**Given** the Expert manual viewer and the Spectator Lounge manual mirror
+**When** they render
+**Then** they render the session's active ruleset (same data the server solves against); solutions are still never sent to the client.
+
+**Given** a retry or a mid-session reattach
+**When** rules are resolved
+**Then** the identical ruleset is reproduced (deterministic from `sessionId`).
+
+**Given** structured logs
+**When** a session runs
+**Then** the ruleset id/seed is logged for reconstruction — never generated solutions.
+
+### Story 11.3: Rule Generators — Permutation-Safe Modules
+
+As a team,
+I want session-generated rules for the table-permutation modules,
+So that Wires, The Button, Simon Says, Who's on First, Wire Sequences, Morse Code, and Complicated Wires can't be memorized across sessions.
+
+**Acceptance Criteria:**
+
+**Given** each module's fixed rule skeleton
+**When** its generator runs from the `rulesetSeed`
+**Then** parameters (conditions, orderings, mappings, cut codes, priority lists, word↔frequency pairs) are deterministically generated within the skeleton — first-match rule lists always terminate in a catch-all (Wires, Button), mappings and priority lists are valid permutations (Simon, Who's on First), and the Morse word↔frequency map is a bijection.
+
+**Given** each generator
+**When** property tests run across many seeds
+**Then** every generated ruleset satisfies its module's invariants (FR51) and each module remains solvable using only the rendered manual data.
+
+**Given** the classic ruleset
+**When** generators are bypassed (classic seed/fixture)
+**Then** the 11.1 golden tests still pass — generation is additive, never a rewrite of the rules-as-data layer.
+
+### Story 11.4: Rule Generators — Constraint-Heavy Modules
+
+As a team,
+I want session-generated rules for the constraint-heavy modules,
+So that Keypads, Memory, Passwords, and Mazes also rotate without ever producing an unsolvable board.
+
+**Acceptance Criteria:**
+
+**Given** the Keypads generator
+**When** symbol columns are generated
+**Then** the unique-column property holds: for any 4-symbol draw the module can produce, exactly one column contains all four.
+
+**Given** the Memory generator
+**When** stage tables are generated
+**Then** all cross-stage references are well-founded (a stage only references results of earlier stages) and every display value has a defined action.
+
+**Given** the Passwords generator
+**When** the word list and column cycling are generated
+**Then** exactly one listed word is reachable from the generated columns.
+
+**Given** the Mazes generator
+**When** maze layouts are generated
+**Then** every maze is fully connected (any start can reach any target) and each layout is uniquely identified by its marker positions.
+
+**Given** any generator invariant failure
+**When** generation runs
+**Then** a deterministic bounded retry with derived sub-seeds produces a valid ruleset (no `Math.random()`, no unbounded loops), and property tests cover the retry path.
