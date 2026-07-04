@@ -69,7 +69,11 @@ export function designateEqualisationVolunteer(
 
   const nextTeam: TeamState = { ...team, equalisationVolunteerId: args.playerId };
 
-  // Role discipline: exactly one Defuser on the team — the volunteer.
+  // Role discipline: exactly one Defuser on the team — the volunteer. Story 9.5:
+  // like startRound's mint, this pass keys on teamId — a TEAMED facilitator here
+  // is reconciled like any player (a 'facilitator' role marker may be overwritten
+  // to defuser/expert; intended, role = play role). Session authority is
+  // unaffected — it lives in state.facilitatorPlayerId (see isSessionFacilitator).
   const players: Record<string, PlayerInfo> = { ...state.players };
   for (const player of Object.values(state.players)) {
     if (player.teamId !== args.teamId) continue;

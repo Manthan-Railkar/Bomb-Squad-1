@@ -1530,7 +1530,7 @@ So that single-team and 2-player sessions don't need a separate hosting tab.
 
 **Given** the Facilitator's team is the active team mid-round
 **When** they view their surface
-**Then** they play their role's surface (bomb or manual) with a compact facilitator overlay (pause/resume, confirm-guarded) instead of the full dashboard; the full dashboard returns between rounds and while their team is resting.
+**Then** they play their role's surface (bomb or manual) with a compact facilitator overlay (pause/resume, confirm-guarded) instead of the full dashboard; the full dashboard returns between rounds. While their team is RESTING mid-round they watch from the Spectator Lounge like any resting player (the reconciled §9.4 rule — "the facilitator watches from the lounge when not on the active team"), keeping the break-glass pause overlay; the dashboard's config/start controls are phase-gated off mid-round regardless. *(Wording reconciled 2026-07-04 by 9.5 code review, decision: lounge-over-dashboard, per Jay.)*
 
 **Given** relay rotation or turn flips change the Facilitator's effective context (active player ↔ resting/spectating ↔ between-rounds)
 **When** the transition applies

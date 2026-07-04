@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { PlayerInfo } from '@bomb-squad/shared';
+import type { PlayerInfo, TeamId } from '@bomb-squad/shared';
 import { useGameStore } from '../store/gameStore.js';
 import { getSocket } from '../net/socket.js';
 import { selectIsFacilitator } from './selectors.js';
@@ -32,8 +32,20 @@ import {
  * ResolutionBanner; no Three.js/WebGL changes. The per-team timer LCD already
  * freezes on `TimerState.pausedAt` (Story 8.4), so this owns only the strip + dim.
  */
-function isParticipant(player: PlayerInfo | undefined): boolean {
-  return player?.teamId !== undefined;
+/**
+ * Mirror of the server's `isActiveParticipant` (pauseSession.ts): only players on
+ * the team CURRENTLY playing gate the disconnect-pause ready/resume flow. A
+ * resting-team player — including a facilitator who opted onto the resting team
+ * (Story 9.5 review) — must not disable Resume client-side when the server's
+ * `canResume` would accept it. Defensive: with no `activeTeamId`, any teamed
+ * player counts (same as the server).
+ */
+function isActiveParticipant(
+  player: PlayerInfo | undefined,
+  activeTeamId: TeamId | undefined,
+): boolean {
+  if (player?.teamId === undefined) return false;
+  return activeTeamId === undefined || player.teamId === activeTeamId;
 }
 
 export default function PauseOverlay() {
@@ -51,16 +63,23 @@ export default function PauseOverlay() {
   // (role now defuser/expert) still gets the break-glass pause on their surface.
   const isFacilitator = selectIsFacilitator(session, selfId);
 
+  // The break-glass button exists ONLY un-paused, for the facilitator, in a
+  // pausable phase. On ANY other render — including the paused strip — a
+  // lingering armed flag must drop, or the confirm guard is bypassed: arm →
+  // teammate drops (auto-pause) → resume would return the button pre-armed and
+  // a single stray click pauses (review 9.5). Same-component render-phase reset
+  // (the React-sanctioned derived-state pattern), self-terminating.
+  const showPauseButton =
+    session.pausedAt === null &&
+    isFacilitator &&
+    (session.status === 'active' || session.status === 'between-rounds');
+  if (pauseArmed && !showPauseButton) setPauseArmed(false);
+
   // Not paused: the facilitator's "break-glass" Pause affordance (EXPERIENCE.md —
   // fades to low opacity until hovered). Only meaningful for a live round or the
   // between-rounds gap; everyone else sees nothing.
   if (session.pausedAt === null) {
-    const canPause = session.status === 'active' || session.status === 'between-rounds';
-    if (!isFacilitator || !canPause) {
-      // Ensure the control never lingers armed across a phase/authority change.
-      if (pauseArmed) setPauseArmed(false);
-      return null;
-    }
+    if (!showPauseButton) return null;
     // AC-3 (DD1): confirm-guarded on the SAME break-glass button (single testid).
     // First click ARMS (label flips to "Confirm pause", full opacity); second
     // click emits. A stray single click can no longer detonate the round. Blur
@@ -98,8 +117,11 @@ export default function PauseOverlay() {
   const droppedNames = session.disconnectedPlayerIds.map(
     (id) => session.players[id]?.displayName ?? 'A player',
   );
-  // Mirror the server's canResume: every on-team participant must be ready.
-  const participants = Object.values(session.players).filter(isParticipant);
+  // Mirror the server's canResume: every ACTIVE-TEAM participant must be ready
+  // (Model B — a resting-team player never gates resume).
+  const participants = Object.values(session.players).filter((p) =>
+    isActiveParticipant(p, session.activeTeamId),
+  );
   const allReady = participants.every((p) => p.isReady);
 
   const resume = () => getSocket().emit('FACILITATOR_RESUME');
@@ -117,7 +139,8 @@ export default function PauseOverlay() {
   // them) AND resume (authority) — without the ready button their own not-ready
   // state would make Resume unreachable. Pre-9.5 the facilitator was always
   // teamless, so `facilitatorNeedsReady` is simply false and the UI is unchanged.
-  const facilitatorNeedsReady = isDisconnect && isParticipant(self) && self?.isReady === false;
+  const facilitatorNeedsReady =
+    isDisconnect && isActiveParticipant(self, session.activeTeamId) && self?.isReady === false;
 
   let control: React.ReactNode;
   if (isFacilitator) {
@@ -145,7 +168,7 @@ export default function PauseOverlay() {
         </button>
       </div>
     );
-  } else if (isDisconnect && isParticipant(self)) {
+  } else if (isDisconnect && isActiveParticipant(self, session.activeTeamId)) {
     control = self?.isReady ? (
       <span className="font-mono text-xs">{PAUSE_READY_DONE}</span>
     ) : (

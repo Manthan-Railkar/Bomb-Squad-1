@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMockSocket, type MockSocket } from '../../test/mockSocket.js';
@@ -47,6 +47,66 @@ describe('PauseOverlay (Story 8.7)', () => {
     expect(mock.emit).toHaveBeenCalledWith('FACILITATOR_PAUSE');
     expect(mock.emit).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('facilitator-pause')).toHaveTextContent(FACILITATOR_PAUSE_CTA);
+  });
+
+  it('review 9.5: an ARMED Pause disarms when an intervening pause unmounts the button (no one-click bypass after resume)', async () => {
+    // Arm the break-glass button…
+    useGameStore.setState({
+      session: makeSession({ status: 'active', players: players() }),
+      myPlayerId: 'fac',
+    });
+    render(<PauseOverlay />);
+    await userEvent.click(screen.getByTestId('facilitator-pause')); // arm
+    expect(screen.getByTestId('facilitator-pause')).toHaveTextContent(FACILITATOR_PAUSE_CONFIRM_CTA);
+    // …then a disconnect auto-pause arrives before the confirm (button unmounts,
+    // no blur). Store pushes land outside React's event flow → wrap in act().
+    act(() => {
+      useGameStore.setState({
+        session: makeSession({
+          status: 'active',
+          pausedAt: 100,
+          pauseKind: 'disconnect',
+          disconnectedPlayerIds: ['maya'],
+          players: players(),
+        }),
+        myPlayerId: 'fac',
+      });
+    });
+    expect(screen.queryByTestId('facilitator-pause')).toBeNull();
+    // …and after resume the button must be back DISARMED: the first click only
+    // re-arms (no emit) — the confirm guard survived the round trip.
+    act(() => {
+      useGameStore.setState({
+        session: makeSession({ status: 'active', players: players() }),
+        myPlayerId: 'fac',
+      });
+    });
+    expect(screen.getByTestId('facilitator-pause')).toHaveTextContent(FACILITATOR_PAUSE_CTA);
+    await userEvent.click(screen.getByTestId('facilitator-pause'));
+    expect(mock.emit).not.toHaveBeenCalled();
+  });
+
+  it('review 9.5: a RESTING-team facilitator neither gates Resume nor sees a ready button (client mirrors server canResume)', () => {
+    useGameStore.setState({
+      session: makeSession({
+        status: 'active',
+        pausedAt: 100,
+        pauseKind: 'disconnect',
+        activeTeamId: 'A',
+        disconnectedPlayerIds: [],
+        players: {
+          // The facilitator opted onto RESTING Team B; their isReady=false must
+          // not disable Resume — the server's canResume counts the ACTIVE team only.
+          fac: makePlayer({ playerId: 'fac', displayName: 'Faci', role: 'expert', teamId: 'B', isReady: false }),
+          maya: makePlayer({ playerId: 'maya', displayName: 'Maya', role: 'defuser', teamId: 'A', isReady: true }),
+          pat: makePlayer({ playerId: 'pat', displayName: 'Pat', role: 'expert', teamId: 'A', isReady: true }),
+        },
+      }),
+      myPlayerId: 'fac',
+    });
+    render(<PauseOverlay />);
+    expect(screen.getByTestId('pause-resume')).toBeEnabled();
+    expect(screen.queryByTestId('pause-ready')).toBeNull();
   });
 
   it('Story 9.5 (AC-3): a teamed facilitator (role=defuser, flag-keyed) still gets the break-glass Pause', () => {

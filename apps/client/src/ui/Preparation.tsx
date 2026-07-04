@@ -126,6 +126,13 @@ export default function Preparation() {
     getSocket().emit('PREPARATION_CANCEL');
   };
 
+  // Story 9.5 (DD5, review-pinned by Jay): the facilitator ALWAYS gets the
+  // operator prep view — even when teamed and even when they are the upcoming
+  // Defuser (this branch deliberately precedes the isUpcomingDefuser /
+  // Expert-manual branches below). They are running the session during prep;
+  // they can study the manual between rounds. If the missing bomb-orientation
+  // (4.6) for a facilitator-Defuser ever hurts in play, a future story adds a
+  // combined surface — do not silently reorder these branches.
   if (isFacilitator) {
     return (
       <div className="flex flex-1 items-start justify-center p-8">

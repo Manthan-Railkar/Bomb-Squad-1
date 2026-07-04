@@ -3396,6 +3396,76 @@ describe('Pause — facilitator & disconnect (Story 8.7)', () => {
     expect(teamA.map((s) => s.data.playerId)).toContain(maya.identity.playerId);
     expect(reconnect.connected).toBe(true);
   });
+
+  it('Story 9.5 (AC-5): a facilitator-Defuser disconnect auto-pauses; durable-id reattach + all-ready + their OWN resume completes the loop', async () => {
+    // The facilitator opts THEMSELVES onto Team A via the real TEAM_ASSIGN path
+    // (exercising the opened assignment), alongside Maya. Their play role is
+    // 'defuser'; authority stays on the durable-id flag.
+    const { ack, identity: facIdentity } = await createWithIdentity();
+    const maya = await joinWithIdentity(ack.joinCode, 'Maya');
+    await assign(facIdentity.playerId, 'A');
+    await assign(maya.identity.playerId, 'A');
+    seed(ack.sessionId, { activeTeamId: 'A' });
+    await store.setJSON(timerKey(ack.sessionId, 'A'), runningTimer());
+
+    // Predicate-gated waiter: Maya's socket also receives the earlier TEAM_ASSIGN
+    // broadcasts (possibly still in flight when a listener attaches), so waiting
+    // for "the next SESSION_STATE" races — wait for the state that MATCHES.
+    const stateWhere = (pred: (s: SessionState) => boolean): Promise<SessionState> =>
+      new Promise((resolve) => {
+        const onState = (s: SessionState): void => {
+          if (!pred(s)) return;
+          maya.socket.off('SESSION_STATE', onState);
+          resolve(s);
+        };
+        maya.socket.on('SESSION_STATE', onState);
+      });
+
+    // 1. The facilitator-Defuser drops mid-round → the 8.7 auto-pause fires,
+    //    naming THEM (teamId-keyed; being the facilitator is irrelevant here).
+    const pauseBc = stateWhere((s) => s.pausedAt !== null);
+    facilitator.disconnect();
+    const paused = await pauseBc;
+    expect(paused.pausedAt).not.toBeNull();
+    expect(paused.pauseKind).toBe('disconnect');
+    expect(paused.disconnectedPlayerIds).toContain(facIdentity.playerId);
+    const frozen = JSON.parse(store.data.get(timerKey(ack.sessionId, 'A'))!) as TimerState;
+    expect(frozen.pausedAt).not.toBeNull();
+
+    // 2. Reattach on the durable id: cleared from the dropped list, still paused.
+    const clearedBc = stateWhere((s) => !s.disconnectedPlayerIds.includes(facIdentity.playerId));
+    const facReconnect = await server.connectClient({
+      sessionId: ack.sessionId,
+      reattachToken: facIdentity.reattachToken,
+    });
+    const cleared = await clearedBc;
+    expect(cleared.pausedAt).not.toBeNull(); // resume is still the facilitator's call
+
+    // 3. Resume before ready → refused (the gate is honest even for the holder).
+    const notReady = nextEvent<ErrorPayload>(facReconnect, 'ERROR');
+    facReconnect.emit('FACILITATOR_RESUME');
+    expect((await notReady).code).toBe('PLAYERS_NOT_READY');
+
+    // 4. Both active-team participants ready up (the facilitator is one of them).
+    const facReady = stateWhere((s) => s.players[facIdentity.playerId]?.isReady === true);
+    facReconnect.emit('PLAYER_READY', { isReady: true });
+    await facReady;
+    const mayaReady = stateWhere((s) => s.players[maya.identity.playerId]?.isReady === true);
+    maya.socket.emit('PLAYER_READY', { isReady: true });
+    await mayaReady;
+
+    // 5. The REATTACHED facilitator resumes — authority survived the drop because
+    //    the flag keys on the durable playerId, not the socket or the role
+    //    (their role is 'defuser' the whole time). The old role-keyed deadlock
+    //    (minted role ⇒ nobody can resume) is dead.
+    const resumedBc = stateWhere((s) => s.pausedAt === null);
+    facReconnect.emit('FACILITATOR_RESUME');
+    const resumed = await resumedBc;
+    expect(resumed.pausedAt).toBeNull();
+    expect(resumed.players[facIdentity.playerId]!.role).toBe('defuser');
+    const rearmed = JSON.parse(store.data.get(timerKey(ack.sessionId, 'A'))!) as TimerState;
+    expect(rearmed.pausedAt).toBeNull(); // clock running again
+  });
 });
 
 describe('SESSION_END handler (Story 8.10)', () => {

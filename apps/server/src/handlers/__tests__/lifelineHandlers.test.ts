@@ -255,8 +255,9 @@ describe('LIFELINE_SEND handler', () => {
   it('Story 9.5 (DD3): a TEAMED facilitator on the RESTING team CAN spend (role is a play role)', async () => {
     // The facilitator opted onto resting Team B with a play role — the spend
     // gate excludes only `role === 'facilitator' || teamId === activeTeamId`, so
-    // a facilitator whose role is now 'spectator'/'expert' and who sits off the
-    // active team spends like any resting player. Seed that shape directly (same
+    // a facilitator whose role is now a play role and who sits off the active
+    // team spends like any resting player ('spectator' exercised here; every
+    // non-'facilitator' role takes the identical gate path). Seed directly (same
     // pattern as the resting-team-player test); the facilitator socket's
     // data.playerId is the durable facilitator id.
     const { sessionId } = await activeRound({ samTokens: 0 });

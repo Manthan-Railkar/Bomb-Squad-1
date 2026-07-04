@@ -109,6 +109,23 @@ describe('isRelayComplete (terminal predicate, Model B semantics)', () => {
   it('empty session (no populated team) is vacuously complete (handler guards with hasPopulatedTeam)', () => {
     expect(isRelayComplete(session())).toBe(true);
   });
+
+  it('Story 9.5: a TEAMED facilitator is an ordinary relay slot — complete only after THEY have defused', () => {
+    // The facilitator ('fac', the createSessionState authority id) opted onto the
+    // single team last: relayOrder = [A-p0, fac]. Their slot counts toward the
+    // rotation like any player's — the relay is NOT complete until the pointer
+    // has passed their turn (no facilitator special-casing in the relay math).
+    const withFac = (played: number): SessionState => {
+      const base = session(team('A', 1, played));
+      const teamA = base.teams.A!;
+      return {
+        ...base,
+        teams: { A: { ...teamA, relayOrder: [...teamA.relayOrder, 'fac'], currentDefuserIndex: played } },
+      };
+    };
+    expect(isRelayComplete(withFac(1))).toBe(false); // partner defused; the facilitator has not
+    expect(isRelayComplete(withFac(2))).toBe(true); // facilitator's slot committed too
+  });
 });
 
 describe('pairIndexFor (layout pair = ceil(roundNumber / 2))', () => {
