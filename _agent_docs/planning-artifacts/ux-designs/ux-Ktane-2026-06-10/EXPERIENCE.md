@@ -2,7 +2,7 @@
 name: Bomb Squad — Experience Design
 project: Ktane
 status: final
-updated: 2026-06-10
+updated: 2026-07-03
 peer: ./DESIGN.md
 sources:
   - ../../briefs/brief-Ktane-2026-06-09/brief.md
@@ -31,8 +31,8 @@ Top-level surfaces, in player-encounter order:
 4. **Active round (role-dependent):**
    - **Defuser:** Bomb View.
    - **Expert:** Manual Viewer.
-   - **Spectator:** Spectator Lounge (split-pane Bomb + current manual page).
-   - **Facilitator:** Facilitator Dashboard.
+   - **Spectator (+ resting-team players + Facilitator):** Spectator Lounge — split-pane: read-only Bomb (60%) + the **Expert manual multiview** (40%): one read-only follow-card per active-team Expert, **stacked vertically**, each headed "{Expert name} · Ch.{n} {title} · 🔒", manual text at full size with per-card scroll; an Expert who hasn't opened the manual shows a dashed "Hasn't opened the manual" placeholder card. Cards ordered stably (by name); only the navigating Expert's card updates. `[UPDATED 2026-07-03, Jay]` — multiview supersedes the earlier single locked-to-most-recent pane; stacked cards chosen over side-by-side columns (illegible at 3) and focus+filmstrip (one-readable-at-a-time); layout reference `mockups/5b. Lounge Manual Multiview.html`. The Facilitator's lounge hides the lifeline token counter and Send Tip (never earns).
+   - **Facilitator:** Facilitator Dashboard (session controls; during a live round the Facilitator's watching surface is the Spectator Lounge above until a dedicated in-round dashboard ships).
 5. **Between-round** — scoreboard preview + ready gate for next round.
 6. **End-of-session** — final scoreboard, debrief.
 
@@ -236,8 +236,8 @@ Priya, design lead, is facilitating Friday team-building. Two teams of 4. She's 
 
 Sam was Defuser in round 2 and detonated at 0:14. In round 3, he's Spectator. He holds 1 lifeline token.
 
-1. **Enter lounge.** Spectator Lounge view: bomb scene left, current Expert manual page right. Listen-only voice — he hears the Bomb Room but cannot speak in. Chat is off (Priya's call).
-2. **Watch.** He sees Team A on Simon Says. Maya is pressing wrong colors. He winces.
+1. **Enter lounge.** Spectator Lounge view: bomb scene left; right, the Expert multiview — a stacked card per Expert (Devon on Ch. 6 Simon Says, Ana on Ch. 8 Memory), each locked to its Expert's page. He hears the Bomb Room via the lounge and cannot speak into it (lounge-internal talk per Story 3.7). Chat is off (Priya's call).
+2. **Watch.** He sees Team A on Simon Says. Maya is pressing wrong colors; Devon's card sits on the Simon table — Sam can read the exact row Devon is misreading. He winces.
 3. **Knows the answer.** He just played Simon last round — he knows the vowel-rule pivot point.
 4. **Climax — the token.** Lifeline button glows in the lounge HUD. Pre-defined tip list (8 options); he picks "Check serial number for vowels — flips the color table." Confirm modal: "Send this tip? You have 0 tokens after."
 5. **Send.** A toast appears in the Bomb Room: "Spectator Sam sent a tip: Check serial number for vowels — flips the color table." 8-second persistence (per GDD A8). Maya reads it aloud. Module solves.
@@ -255,4 +255,4 @@ Sam was Defuser in round 2 and detonated at 0:14. In round 3, he's Spectator. He
 - `[ASSUMPTION]` Player-journey protagonists invented — confirm or replace.
 - `[ASSUMPTION]` Aesthetic direction (DESIGN.md) — confirm or pivot before Claude Design handoff.
 - `[NOTE FOR UX]` Module-typed solve-chime pitches need audio direction at architecture phase.
-- `[NOTE FOR UX]` Spectator manual view: locked-to-Expert vs free-navigate default (GDD A3 open).
+- ~~`[NOTE FOR UX]` Spectator manual view: locked-to-Expert vs free-navigate default (GDD A3 open).~~ **RESOLVED 2026-07-03 (Jay):** locked, as a per-Expert MULTIVIEW — one stacked read-only follow-card per active-team Expert (see IA §4; layout `mockups/5b`).

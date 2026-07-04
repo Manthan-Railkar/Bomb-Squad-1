@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<!-- ============================================================================
+     Bomb Squad — WORKING ARTIFACT: Lounge manual-region multiview variants
+     (Story 9.4 update pass, 2026-07-03). Not a final mockup.
+
+     Question: the lounge's right region (40% pane, 768×1004 in the 1920×1080
+     stage) must show one read-only follow-pane PER active-team Expert (1–3).
+     Three candidate layouts, each rendered at 2-Expert and 3-Expert counts,
+     using tokens.css verbatim. Legibility notes inline.
+
+     A — STACKED CARDS: full-width page slices, vertical stack, per-card scroll.
+     B — COLUMNS: side-by-side full-height pages, scaled down to fit width.
+     C — FOCUS + FILMSTRIP: one full-size readable page + live thumbnails.
+     ============================================================================ -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>WORKING — Lounge Manual Multiview Variants</title>
+<link rel="stylesheet" href="../mockups/tokens.css">
+<style>
+  body { background:#0B0A0D; color:var(--ink-primary); font-family:var(--font-body); margin:0; padding:32px; }
+  h1 { font-family:var(--font-display); font-size:var(--fs-lg); margin:0 0 6px; }
+  .note { font-family:var(--font-mono); font-size:var(--fs-xs); color:var(--ink-muted); max-width:900px; line-height:1.5; }
+  .grid { display:flex; flex-wrap:wrap; gap:40px; margin-top:28px; }
+  .variant { display:flex; flex-direction:column; gap:10px; }
+  .variant > h2 { font-family:var(--font-mono); font-size:var(--fs-sm); letter-spacing:.14em; text-transform:uppercase; color:var(--brass); margin:0; }
+  .variant > p { font-family:var(--font-mono); font-size:10px; color:var(--ink-muted); margin:0; max-width:400px; line-height:1.45; }
+  /* the 40% lounge pane at 52% scale for side-by-side comparison: 768x1004 -> 400x522 */
+  .paneframe { width:400px; height:522px; overflow:hidden; border:1px solid #2A242F; border-radius:6px;
+    background: radial-gradient(100% 80% at 60% 0%, #1C1922 0%, #131217 60%, #0B0A0D 100%); position:relative; }
+  .pane { width:768px; height:1004px; transform:scale(.5208); transform-origin:top left; padding:20px 22px; box-sizing:border-box; display:flex; flex-direction:column; gap:14px; }
+
+  /* shared: expert card header */
+  .xhead { display:flex; align-items:center; gap:9px; flex:none; }
+  .xhead .av { width:24px; height:24px; border-radius:50%; background:#7A4FB0; display:grid; place-items:center;
+    font-family:var(--font-display); font-weight:700; font-size:11px; color:#fff; flex:none; }
+  .xhead .nm { font-family:var(--font-display); font-weight:600; font-size:var(--fs-sm); }
+  .xhead .ch { font-family:var(--font-mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-muted); margin-left:auto; }
+  .xhead .lock { font-family:var(--font-mono); font-size:9px; color:#8A7A5E; border:1px solid #2A242F; border-radius:var(--r-pill); padding:2px 8px; }
+
+  /* shared: mini manual sheet */
+  .msheet { background:var(--surface-manual); color:var(--ink-manual); border:1px solid #C9BC9D; border-radius:3px;
+    box-shadow:0 3px 10px rgba(0,0,0,.4); padding:18px 20px; overflow:hidden; position:relative; flex:1; min-height:0; }
+  .msheet .hd { display:flex; align-items:baseline; gap:9px; border-bottom:2px solid #211A12; padding-bottom:5px; margin-bottom:8px; }
+  .msheet .hd .n { font-family:var(--font-manual); font-weight:700; font-size:24px; color:var(--bakelite); line-height:1; }
+  .msheet .hd .t { font-family:var(--font-manual); font-weight:700; font-size:19px; }
+  .msheet p { font-family:var(--font-manual); font-size:13px; line-height:1.45; margin:0 0 8px; }
+  .msheet table { width:100%; border-collapse:collapse; font-family:var(--font-manual); font-size:12px; }
+  .msheet td { padding:3.5px 3px; border-bottom:1px solid #D8CBAC; }
+  .msheet td:last-child { text-align:right; font-weight:600; white-space:nowrap; }
+  .msheet .fade { position:absolute; left:0; right:0; bottom:0; height:34px;
+    background:linear-gradient(transparent, var(--surface-manual)); }
+  .msheet .scrollhint { position:absolute; right:10px; bottom:6px; font-family:var(--font-mono); font-size:9px; color:#8A7A5E; }
+
+  /* placeholder card (expert hasn't opened manual) */
+  .mwait { flex:1; min-height:0; border:1px dashed #3A3340; border-radius:3px; display:grid; place-items:center; }
+  .mwait span { font-family:var(--font-mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-muted); }
+
+  /* A: stack */
+  .stack { display:flex; flex-direction:column; gap:14px; flex:1; min-height:0; }
+  .stack .card { flex:1; min-height:0; display:flex; flex-direction:column; gap:7px; }
+
+  /* B: columns */
+  .cols { display:flex; gap:14px; flex:1; min-height:0; }
+  .cols .card { flex:1; min-width:0; display:flex; flex-direction:column; gap:7px; }
+  .cols.three .msheet { padding:10px 11px; }
+  .cols.three .msheet .hd .n { font-size:16px; } .cols.three .msheet .hd .t { font-size:13px; }
+  .cols.three .msheet p { font-size:9px; } .cols.three .msheet table { font-size:8px; }
+  .cols.two .msheet p { font-size:11px; } .cols.two .msheet table { font-size:10px; }
+
+  /* C: focus + filmstrip */
+  .focuswrap { display:flex; flex-direction:column; gap:12px; flex:1; min-height:0; }
+  .filmstrip { display:flex; gap:10px; flex:none; height:150px; }
+  .thumb { flex:1; border-radius:4px; overflow:hidden; position:relative; cursor:pointer;
+    border:2px solid transparent; background:var(--surface-raised); display:flex; flex-direction:column; }
+  .thumb.active { border-color:var(--brass); }
+  .thumb .thead { display:flex; align-items:center; gap:6px; padding:5px 8px; }
+  .thumb .thead .av { width:16px; height:16px; font-size:8px; }
+  .thumb .thead .nm { font-size:10px; }
+  .thumb .tsheet { flex:1; margin:0 8px 8px; background:var(--surface-manual); border-radius:2px; overflow:hidden; padding:6px 7px; }
+  .thumb .tsheet .l1 { font-family:var(--font-manual); font-weight:700; font-size:9px; color:var(--ink-manual); border-bottom:1px solid #C9BC9D; padding-bottom:2px; margin-bottom:3px; }
+  .thumb .tsheet .bar { height:3px; background:#D8CBAC; border-radius:2px; margin:3px 0; }
+  .focusmain { flex:1; min-height:0; display:flex; flex-direction:column; gap:7px; }
+</style>
+</head>
+<body>
+  <h1>Lounge manual region — multiview variants (Story 9.4)</h1>
+  <p class="note">Each frame below is the lounge's 40% manual pane (768×1004) at half scale. Constraint: manual body text is 14–16px serif at full size; anything below ~11px effective fails the "readable at a glance" bar for a watching spectator. Expert counts of 2 and 3 shown (1 Expert = the existing single-sheet mockup in all variants).</p>
+
+  <div class="grid">
+
+    <!-- ============ A: STACKED, 2 experts ============ -->
+    <div class="variant">
+      <h2>A — Stacked cards · 2 Experts</h2>
+      <p>Full-width page slices (~440px tall each): text at FULL size, top-of-page visible, card scrolls for the rest. Reading = glanceable headers + first table.</p>
+      <div class="paneframe"><div class="pane">
+        <div class="stack">
+          <div class="card">
+            <div class="xhead"><span class="av">D</span><span class="nm">Devon</span><span class="ch">Ch. 1 · Wires</span><span class="lock">🔒 following</span></div>
+            <div class="msheet">
+              <div class="hd"><span class="n">1</span><span class="t">Wires</span></div>
+              <p>Three to six coloured wires. <b>Cut exactly one</b> to disarm. Count first, then use the matching table.</p>
+              <table>
+                <tr><td>No red wires</td><td>cut the 2nd</td></tr>
+                <tr><td>Last wire is white</td><td>cut the last</td></tr>
+                <tr><td>More than one blue</td><td>cut last blue</td></tr>
+                <tr><td>Otherwise</td><td>cut the last</td></tr>
+              </table>
+              <div class="fade"></div><span class="scrollhint">▼ scrolls</span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="xhead"><span class="av" style="background:#2E6FD6">A</span><span class="nm">Ana</span><span class="ch">Ch. 8 · Memory</span><span class="lock">🔒 following</span></div>
+            <div class="msheet">
+              <div class="hd"><span class="n">8</span><span class="t">Memory</span></div>
+              <p>Five stages. The display shows a number; press the right button by <b>label or position</b>.</p>
+              <table>
+                <tr><td>Stage 1 — display 1</td><td>press position 2</td></tr>
+                <tr><td>Stage 1 — display 2</td><td>press position 2</td></tr>
+                <tr><td>Stage 1 — display 3</td><td>press position 3</td></tr>
+              </table>
+              <div class="fade"></div><span class="scrollhint">▼ scrolls</span>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- ============ A: STACKED, 3 experts ============ -->
+    <div class="variant">
+      <h2>A — Stacked cards · 3 Experts</h2>
+      <p>~285px tall each: full-size text but only the chapter head + 2–3 table rows visible per card. Still legible, less context per Expert. One placeholder shown.</p>
+      <div class="paneframe"><div class="pane">
+        <div class="stack">
+          <div class="card">
+            <div class="xhead"><span class="av">D</span><span class="nm">Devon</span><span class="ch">Ch. 1 · Wires</span><span class="lock">🔒</span></div>
+            <div class="msheet">
+              <div class="hd"><span class="n">1</span><span class="t">Wires</span></div>
+              <table>
+                <tr><td>No red wires</td><td>cut the 2nd</td></tr>
+                <tr><td>Last wire is white</td><td>cut the last</td></tr>
+              </table>
+              <div class="fade"></div><span class="scrollhint">▼</span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="xhead"><span class="av" style="background:#2E6FD6">A</span><span class="nm">Ana</span><span class="ch">Ch. 8 · Memory</span><span class="lock">🔒</span></div>
+            <div class="msheet">
+              <div class="hd"><span class="n">8</span><span class="t">Memory</span></div>
+              <table>
+                <tr><td>Stage 1 — display 1</td><td>press position 2</td></tr>
+                <tr><td>Stage 1 — display 2</td><td>press position 2</td></tr>
+              </table>
+              <div class="fade"></div><span class="scrollhint">▼</span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="xhead"><span class="av" style="background:#9A1414">K</span><span class="nm">Kofi</span><span class="ch">—</span></div>
+            <div class="mwait"><span>Hasn't opened the manual</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- ============ B: COLUMNS, 2 experts ============ -->
+    <div class="variant">
+      <h2>B — Columns · 2 Experts</h2>
+      <p>Two ~365px columns, full page height. Text drops to ~11px effective (12–13px shown here is generous). At 3 Experts (~235px columns) it collapses below legibility — shown only at 2.</p>
+      <div class="paneframe"><div class="pane">
+        <div class="cols two">
+          <div class="card">
+            <div class="xhead"><span class="av">D</span><span class="nm">Devon</span><span class="ch">Ch. 1</span></div>
+            <div class="msheet">
+              <div class="hd"><span class="n">1</span><span class="t">Wires</span></div>
+              <p>Three to six coloured wires. Cut exactly one.</p>
+              <table>
+                <tr><td>No red</td><td>2nd</td></tr>
+                <tr><td>Last white</td><td>last</td></tr>
+                <tr><td>&gt;1 blue</td><td>last blue</td></tr>
+                <tr><td>Otherwise</td><td>last</td></tr>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="xhead"><span class="av" style="background:#2E6FD6">A</span><span class="nm">Ana</span><span class="ch">Ch. 8</span></div>
+            <div class="msheet">
+              <div class="hd"><span class="n">8</span><span class="t">Memory</span></div>
+              <p>Five stages; press by label or position.</p>
+              <table>
+                <tr><td>S1 d1</td><td>pos 2</td></tr>
+                <tr><td>S1 d2</td><td>pos 2</td></tr>
+                <tr><td>S1 d3</td><td>pos 3</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- ============ C: FOCUS + FILMSTRIP, 3 experts ============ -->
+    <div class="variant">
+      <h2>C — Focus + filmstrip · 3 Experts</h2>
+      <p>One FULL-SIZE readable page (auto-follows most-recent nav, or spectator-clickable tabs) + live labeled thumbnails of every other Expert. All Experts visible; one readable at a time.</p>
+      <div class="paneframe"><div class="pane">
+        <div class="focuswrap">
+          <div class="filmstrip">
+            <div class="thumb active">
+              <div class="thead"><span class="av">D</span><span class="nm">Devon</span></div>
+              <div class="tsheet"><div class="l1">1 · Wires</div><div class="bar"></div><div class="bar" style="width:80%"></div><div class="bar" style="width:90%"></div></div>
+            </div>
+            <div class="thumb">
+              <div class="thead"><span class="av" style="background:#2E6FD6">A</span><span class="nm">Ana</span></div>
+              <div class="tsheet"><div class="l1">8 · Memory</div><div class="bar"></div><div class="bar" style="width:70%"></div><div class="bar" style="width:85%"></div></div>
+            </div>
+            <div class="thumb">
+              <div class="thead"><span class="av" style="background:#9A1414">K</span><span class="nm">Kofi</span></div>
+              <div class="tsheet" style="display:grid;place-items:center"><span style="font-family:var(--font-mono);font-size:8px;color:#8A7A5E">NOT OPEN</span></div>
+            </div>
+          </div>
+          <div class="focusmain">
+            <div class="xhead"><span class="av">D</span><span class="nm">Devon</span><span class="ch">Ch. 1 · Wires</span><span class="lock">🔒 following</span></div>
+            <div class="msheet">
+              <div class="hd"><span class="n">1</span><span class="t">Wires</span></div>
+              <p>Three to six coloured wires. <b>Cut exactly one</b> to disarm. Count the wires first, then apply the first matching rule top-to-bottom.</p>
+              <table>
+                <tr><td>No red wires</td><td>cut the 2nd</td></tr>
+                <tr><td>Last wire is white</td><td>cut the last</td></tr>
+                <tr><td>More than one blue</td><td>cut last blue</td></tr>
+                <tr><td>Otherwise</td><td>cut the last</td></tr>
+                <tr><td>&gt;1 red &amp; serial odd</td><td>cut last red</td></tr>
+                <tr><td>Last yellow &amp; no red</td><td>cut the 1st</td></tr>
+              </table>
+              <div class="fade"></div><span class="scrollhint">▼ scrolls</span>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+  </div>
+</body>
+</html>
