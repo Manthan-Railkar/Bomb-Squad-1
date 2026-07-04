@@ -125,12 +125,15 @@ export function modulePressHoldHandlers(
   const readOnly = () => (opts?.readOnly ?? interactionReadOnly);
   const release = (event: ModulePointerEvent) => {
     event.stopPropagation();
-    // Read-only (Story 9.4): swallow + free any capture, but never fire onRelease
-    // (no onPress fired either, so there is no held state to end).
-    if (readOnly()) return;
+    // Free any capture UNCONDITIONALLY, then gate the action (review 9.4): if the
+    // read-only flag ever flipped mid-gesture (press interactive → release
+    // read-only), returning before the release would leak the pointer capture.
     if (event.pointerId !== undefined) {
       (event.target as PointerCaptureTarget | undefined)?.releasePointerCapture?.(event.pointerId);
     }
+    // Read-only (Story 9.4): swallow + capture freed above, but never fire
+    // onRelease (no onPress fired either, so there is no held state to end).
+    if (readOnly()) return;
     onRelease();
   };
   return {

@@ -90,9 +90,9 @@ export const PREP_MANUAL_LINE = "You're on the manual. Read fast.";
 // itself (PrepBombView), not a text line — the former PREP_DEFUSER_LINE /
 // PREP_DEFUSER_PLACEHOLDER copy is retired.
 
-// Active round (Story 8.3) — interim non-defuser surfaces; 8.5+/Epic 9 own the real ones.
+// Active round (Story 8.3) — the teamless-bomb-role fallback line; Story 9.4
+// replaced the spectator/resting standby texts with the composed lounge.
 export const ROUND_IN_PROGRESS = 'Round in progress.';
-export const WATCHING_THE_BOMB_ROOM = 'Watching the bomb room. Keep it down.';
 
 // Round resolution (Story 8.5) — all-caps, terminal punctuation (EXPERIENCE.md
 // round-result copy). DETONATED = 3rd strike; TIME EXPIRED = clock hit 0.
@@ -149,7 +149,6 @@ export const FINAL_FAILED_LABEL = 'Detonated';
 // in-round surface tells them to watch rather than stranding them on a dead bomb.
 /** `team` is the already-formatted label (e.g. "Team A"). */
 export const UP_NEXT = (team: string): string => `Up next: ${team}`;
-export const RESTING_SPECTATE = 'Resting this round — watch the other team defuse.';
 
 // Retry a failed round (Story 8.8, FR14) — facilitator-only affordance shown on
 // the between-rounds scoreboard when a team failed the just-resolved round. The

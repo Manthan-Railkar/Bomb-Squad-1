@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useUiStore } from '../store/uiStore.js';
+import { useGameStore } from '../store/gameStore.js';
 import { isTextEntryTarget } from '../scenes/dom.js';
 import { adjacentChapterId, type ManualChapter } from './chapters.js';
 import { searchChapters } from './search.js';
@@ -83,22 +84,32 @@ export default function ManualViewer({ chapters, assignedChapterIds, followChapt
     ? (followChapterId != null ? chapters.find((c) => c.chapterId === followChapterId) ?? null : null)
     : navigable.find((c) => c.chapterId === storedChapterId) ?? navigable[0] ?? null;
 
-  // Assert the resolved position into the observable store once it differs
-  // (first open / stale id), so spectator mirroring never sees null mid-view.
-  // Story 9.4: a follow-only pane must NEVER write a position (it has none of its
-  // own — it mirrors the Expert), so this is skipped in follow mode.
+  // SINGLE publish point (review 9.4): assert the resolved position into the
+  // observable store + wire whenever the effective chapter or the connection
+  // changes — INCLUDING on mount with an unchanged stored id. A new round
+  // remounts this viewer with the same `uiStore.manualChapterId` while the
+  // server's per-Expert map was cleared at ROUND_START, and a disconnected
+  // emit is silently dropped by publishManualPosition — so both the fresh
+  // round and the reconnect need this re-assert, not a stored-id diff.
+  // The emit is idempotent server-side (CAS map merge of the same entry).
+  // Story 9.4: a follow-only pane must NEVER write a position (it has none of
+  // its own — it mirrors the Expert), so this is skipped in follow mode.
+  const connection = useGameStore((s) => s.connection);
+  const currentChapterId = current?.chapterId ?? null;
   useEffect(() => {
     if (isFollow) return;
-    if (current !== null && current.chapterId !== storedChapterId) {
-      publishManualPosition(current.chapterId);
+    if (currentChapterId !== null) {
+      publishManualPosition(currentChapterId);
     }
-  }, [isFollow, current, storedChapterId]);
+  }, [isFollow, currentChapterId, connection]);
 
   const selectChapter = (chapterId: string) => {
     if (current !== null && scrollRef.current !== null) {
       scrollMemoryRef.current.set(current.chapterId, scrollRef.current.scrollTop);
     }
-    publishManualPosition(chapterId);
+    // Store write only — the publish effect above is the single emit point (it
+    // fires when the resolved chapter changes, so a click emits exactly once).
+    useUiStore.getState().setManualChapterId(chapterId);
     setSearchOpen(false);
     setQuery('');
   };
@@ -185,8 +196,10 @@ export default function ManualViewer({ chapters, assignedChapterIds, followChapt
           <span className="font-manual text-[34px] font-bold leading-none text-bakelite">{followIndex}</span>
           <h2 className="font-manual text-[26px] font-bold tracking-[-0.01em]">{current.chapterTitle}</h2>
         </div>
-        {/* THE single scrolling region for this card (DESIGN.md: no nested scroll). */}
-        <div className="relative min-h-0 flex-1 overflow-y-auto pr-2">
+        {/* THE single scrolling region for this card (DESIGN.md: no nested scroll).
+            Keyed by chapter so a followed Expert's nav remounts it at scrollTop 0
+            (review 9.4 — the Expert path resets via scrollRef; this pane has none). */}
+        <div key={current.chapterId} className="relative min-h-0 flex-1 overflow-y-auto pr-2">
           {current.pages.map((page, i) => (
             <PageRenderer key={i} page={page} />
           ))}

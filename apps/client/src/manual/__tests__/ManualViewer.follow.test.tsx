@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ManualChapter } from '../chapters.js';
 import { useUiStore } from '../../store/uiStore.js';
+import { useGameStore } from '../../store/gameStore.js';
 
 // PageRenderer is rendering-only; stub it so this test focuses on follow-mode
 // chapter selection + the absence of navigation chrome (Story 9.4).
@@ -75,5 +76,25 @@ describe('ManualViewer — follow-only mode (Story 9.4 Spectator Lounge)', () =>
     for (const [, title] of TITLES) {
       expect(screen.getByRole('button', { name: new RegExp(title) })).toBeInTheDocument();
     }
+  });
+});
+
+describe('ManualViewer — Expert republish (review 9.4: round-N+1 / reconnect blank panes)', () => {
+  it('publishes on mount even when the stored id already matches the resolved chapter', () => {
+    // Round N+1 remount: the server's per-Expert map was cleared at ROUND_START but
+    // uiStore.manualChapterId persists — the old `!== storedChapterId` guard never
+    // fired, so the spectator multiview stayed on the placeholder all round.
+    useUiStore.setState({ manualChapterId: 'keypads' });
+    render(<ManualViewer chapters={CHAPTERS} />);
+    expect(publishSpy).toHaveBeenCalledWith('keypads');
+  });
+
+  it('republishes when the connection comes back (a disconnected emit was dropped)', () => {
+    act(() => useGameStore.setState({ connection: 'disconnected' }));
+    useUiStore.setState({ manualChapterId: 'memory' });
+    render(<ManualViewer chapters={CHAPTERS} />);
+    publishSpy.mockClear();
+    act(() => useGameStore.setState({ connection: 'connected' }));
+    expect(publishSpy).toHaveBeenCalledWith('memory');
   });
 });

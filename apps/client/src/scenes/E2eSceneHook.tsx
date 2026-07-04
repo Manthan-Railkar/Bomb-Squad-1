@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useThree } from '@react-three/fiber';
 import { useGameStore } from '../store/gameStore.js';
+import { useUiStore } from '../store/uiStore.js';
 
 /**
  * Dev-only e2e registration hook (Story TD-6). Mounted inside a <Canvas> ONLY
@@ -21,6 +22,8 @@ interface E2eWindow {
   };
   __E2E_STATE__?: {
     getState: typeof useGameStore.getState;
+    /** UI store reads (review 9.4): e.g. assert a read-only bay never sets camera focus. */
+    getUiState: typeof useUiStore.getState;
   };
 }
 
@@ -31,7 +34,10 @@ interface E2eWindow {
  * bootstrap, dev builds only.
  */
 export function registerE2eStateHook(): void {
-  (window as unknown as E2eWindow).__E2E_STATE__ = { getState: useGameStore.getState };
+  (window as unknown as E2eWindow).__E2E_STATE__ = {
+    getState: useGameStore.getState,
+    getUiState: useUiStore.getState,
+  };
 }
 
 export function E2eSceneHook() {

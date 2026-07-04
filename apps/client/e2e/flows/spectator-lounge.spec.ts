@@ -133,19 +133,37 @@ test('a Spectator sees the split-pane lounge, mirrors the bomb, and cannot inter
     await clickMesh(ada, `m0-wire-${uncut}`);
     await waitForBomb(sam, (b) => (b.modules[0]!.data as { wires: { cut: boolean }[] }).wires[uncut]!.cut === true);
 
-    // AC-1/5: the Spectator cannot interact — a forced click on ANOTHER uncut wire
-    // (or the same) changes nothing on Sam's mirror. Read-only is enforced both
-    // client-side (no dispatch) and server-side (NOT_TEAM_DEFUSER).
+    // AC-1/5: the Spectator cannot interact — a forced click on a STILL-UNCUT wire
+    // changes nothing on Sam's mirror (review 9.4: clicking the already-cut wire was
+    // vacuous — that is a no-op for a Defuser too). Read-only is enforced both
+    // client-side (no dispatch) and server-side (NOT_TEAM_DEFUSER); if either layer
+    // broke, this wire would flip to cut (or a strike would land).
     const before = await readBomb(sam);
     const beforeStrikes = before.strikes;
-    await clickMesh(sam, 'm0-wire-0').catch(() => undefined);
+    const beforeWires = (before.modules[0]!.data as { wires: { cut: boolean }[] }).wires;
+    const stillUncut = beforeWires.findIndex((w) => !w.cut);
+    expect(stillUncut).toBeGreaterThanOrEqual(0); // 3+ wires, only one cut so far
+    await clickMesh(sam, `m0-wire-${stillUncut}`).catch(() => undefined);
     await sam.waitForTimeout(500);
     const after = await readBomb(sam);
     expect(after.strikes).toBe(beforeStrikes);
     // No NEW cut appeared from Sam's click (only the Defuser's earlier cut stands).
-    const cutCountBefore = (before.modules[0]!.data as { wires: { cut: boolean }[] }).wires.filter((w) => w.cut).length;
+    const cutCountBefore = beforeWires.filter((w) => w.cut).length;
     const cutCountAfter = (after.modules[0]!.data as { wires: { cut: boolean }[] }).wires.filter((w) => w.cut).length;
     expect(cutCountAfter).toBe(cutCountBefore);
+
+    // AC-1: no Defuser camera-focus controls — a forced click on the module
+    // faceplate (the click-to-focus surface) never sets uiStore.activeModuleIndex
+    // on a read-only bay (review 9.4: ModuleBay drops the handler under readOnly).
+    await clickMesh(sam, 'bay-0').catch(() => undefined);
+    await sam.waitForTimeout(300);
+    const focused = await sam.evaluate(() => {
+      const e2e = (
+        window as { __E2E_STATE__?: { getUiState: () => { activeModuleIndex: number | null } } }
+      ).__E2E_STATE__;
+      return e2e ? e2e.getUiState().activeModuleIndex : 'no-hook';
+    });
+    expect(focused).toBeNull();
   } finally {
     await cleanup();
   }

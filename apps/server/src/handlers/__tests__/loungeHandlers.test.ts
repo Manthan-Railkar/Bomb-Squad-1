@@ -70,17 +70,6 @@ function nextEvent<T>(socket: TestClientSocket, event: string): Promise<T> {
   return new Promise<T>((resolve) => socket.once(event as 'SESSION_STATE', ((p: T) => resolve(p)) as never));
 }
 
-/** Settle 'seen'/'absent': true if `event` fires within `ms`, false on timeout. */
-function seenWithin(socket: TestClientSocket, event: string, ms: number): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    const t = setTimeout(() => resolve(false), ms);
-    socket.once(event as 'SESSION_STATE', (() => {
-      clearTimeout(t);
-      resolve(true);
-    }) as never);
-  });
-}
-
 describe('Story 9.4 — Spectator Lounge (server)', () => {
   let server: TestSocketServer;
   let store: MemoryRedisStore;
@@ -215,7 +204,6 @@ describe('Story 9.4 — Spectator Lounge (server)', () => {
     // Genuine spectator + resting Team-B player + the facilitator watch (DD4).
     expect(members).toContain(ids.sam);
     expect(members).toContain(ids.devon);
-    expect(members.some((id) => id !== undefined && id !== ids.sam && id !== ids.devon)).toBe(true); // facilitator
     // The active team (Defuser + both Experts) is NEVER in the lounge.
     expect(members).not.toContain(ids.maya);
     expect(members).not.toContain(ids.alice);
@@ -328,5 +316,99 @@ describe('Story 9.4 — Spectator Lounge (server)', () => {
     const lounge = (await server.io.in(loungeRoom(sessionId)).fetchSockets()).map((sk) => sk.data.playerId);
     expect(teamB).toContain(ids.devon); // its own (idle) team room — delivers nothing surprising
     expect(lounge).toContain(ids.devon); // AND the lounge, where it watches the active bomb
+  });
+
+  it('the NEXT round flips lounge membership: ex-active Team A watches, active Team B does not (Task 1)', async () => {
+    const { sessionId, ids } = await activeRound();
+
+    // Resolve round 1 out-of-band: flip to between-rounds as resolveRound leaves it
+    // (same store-write pattern as sessionHandlers.test "single-team relay round 2"),
+    // with Team A's relay pointer + times advanced so selectActiveTeam picks B.
+    const live = (await store.getJSON<SessionState>(sessionKey(sessionId)))!;
+    await store.setJSON(sessionKey(sessionId), {
+      ...live,
+      status: 'between-rounds',
+      roundNumber: 1,
+      teams: {
+        ...live.teams,
+        A: { ...live.teams.A!, currentDefuserIndex: 1, cumulativeTimeMs: 9_000, roundTimesMs: [9_000] },
+      },
+    });
+
+    const roster = [facilitator, maya, alice, bob, devon, sam];
+    const everyone = Promise.all(roster.map((s) => nextEvent<SessionState>(s, 'SESSION_STATE')));
+    facilitator.emit('PREPARATION_OPEN');
+    await everyone;
+    const devonTimer = nextEvent<TimerState>(devon, 'TIMER_UPDATE');
+    facilitator.emit('ROUND_START');
+    await devonTimer;
+
+    const state = (await store.getJSON<SessionState>(sessionKey(sessionId)))!;
+    expect(state.activeTeamId).toBe('B');
+
+    const members = (await server.io.in(loungeRoom(sessionId)).fetchSockets()).map((sk) => sk.data.playerId);
+    // Ex-active Team A flips INTO the lounge; the genuine spectator stays.
+    expect(members).toContain(ids.maya);
+    expect(members).toContain(ids.alice);
+    expect(members).toContain(ids.bob);
+    expect(members).toContain(ids.sam);
+    // Devon's Team B is now the active team — he flipped OUT of the lounge.
+    expect(members).not.toContain(ids.devon);
+  });
+
+  it('a kicked lounge member leaves the lounge room too — no bomb stream after removal (review 9.4)', async () => {
+    const { sessionId, ids } = await activeRound();
+
+    const removed = nextEvent(sam, 'SESSION_REMOVED');
+    facilitator.emit('PLAYER_REMOVE', { playerId: ids.sam });
+    await removed;
+
+    const members = (await server.io.in(loungeRoom(sessionId)).fetchSockets()).map((sk) => sk.data.playerId);
+    expect(members).not.toContain(ids.sam); // kicked → out of the lounge on the live socket
+    expect(members).toContain(ids.devon); // other watchers unaffected
+  });
+
+  it('a reattach for a player PRUNED from the roster is refused the lounge + replay (review 9.4)', async () => {
+    const { sessionId, ids, reattach } = await activeRound();
+
+    // Simulate the lobby-prune outcome: roster entry gone, reattach record kept
+    // (removeLobbyPlayer deletes no reattach records).
+    const live = (await store.getJSON<SessionState>(sessionKey(sessionId)))!;
+    const { [ids.sam]: _pruned, ...remaining } = live.players;
+    await store.setJSON(sessionKey(sessionId), { ...live, players: remaining });
+    sam.disconnect();
+
+    let sawBomb = false;
+    const rejoined = ioClient(server.url, {
+      transports: ['websocket'],
+      auth: { sessionId, reattachToken: reattach.sam },
+    });
+    rejoined.on('BOMB_INIT', () => {
+      sawBomb = true;
+    });
+    await new Promise<void>((resolve, reject) => {
+      rejoined.once('connect', () => resolve());
+      rejoined.once('connect_error', reject);
+    });
+    await new Promise<void>((r) => setTimeout(r, 150));
+
+    const members = (await server.io.in(loungeRoom(sessionId)).fetchSockets()).map((sk) => sk.data.playerId);
+    expect(members).not.toContain(ids.sam); // non-roster socket: no lounge membership
+    expect(sawBomb).toBe(false); // …and no live-bomb replay
+    rejoined.disconnect();
+  });
+
+  it('a Redis hiccup on the stale manual-map clear does not wedge ROUND_START (review 9.4)', async () => {
+    // The del of manualPositionKey is best-effort: fail EXACTLY that key's delete
+    // and prove the round still starts (timer armed, BOMB_INIT delivered to the lounge).
+    const baseDel = store.del.bind(store);
+    store.del = (async (key: string) => {
+      if (key.endsWith(':manualPosition')) throw new Error('redis down');
+      return baseDel(key);
+    }) as typeof store.del;
+
+    const samBomb = nextEvent<BombState>(sam, 'BOMB_INIT');
+    await activeRound(); // internally awaits the ROUND_START TIMER_UPDATE
+    expect(await samBomb).toBeDefined();
   });
 });

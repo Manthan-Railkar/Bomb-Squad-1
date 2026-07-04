@@ -648,11 +648,15 @@ async function restoreReattachedSocket(
       // is unicast the active team's bomb snapshot + every Expert's manual position
       // (the dual-targeted broadcast already fired before this socket rejoined).
       // The predicate `teamId !== activeTeamId` naturally includes the teamless
-      // spectator/facilitator (undefined !== a real id). Self-guarded so a replay
-      // hiccup never fails the reattach.
+      // spectator/facilitator (undefined !== a real id). Gated on CURRENT roster
+      // membership (review 9.4): a lobby-pruned player's reattach record survives
+      // the grace-timer removal, and without the roster check their reconnect
+      // would optional-chain `myTeamId` to undefined, pass the predicate, and put
+      // a non-roster socket in the lounge with a full live-bomb replay. Self-
+      // guarded so a replay hiccup never fails the reattach.
       const activeTeamId = latest.activeTeamId;
-      const myTeamId = latest.players[playerId]?.teamId;
-      if (activeTeamId !== undefined && myTeamId !== activeTeamId) {
+      const me = latest.players[playerId];
+      if (activeTeamId !== undefined && me !== undefined && me.teamId !== activeTeamId) {
         await socket.join(loungeRoom(sessionId));
         try {
           await replayLoungeSnapshot(socket, deps.redis, sessionId, activeTeamId);
@@ -1712,10 +1716,17 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
 
         // Story 9.4: clear last round's per-Expert manual positions so a spectator
         // in the NEW round starts with blank multiview panes until each Expert
-        // navigates (or is replayed on a mid-round join). Best-effort — a stale map
-        // would only briefly show last round's pages; the client also resets
-        // expertManualPositions on setBomb (the new-round BOMB_INIT).
-        await deps.redis.del(manualPositionKey(sessionId));
+        // navigates (or is replayed on a mid-round join). Best-effort AND guarded
+        // (review 9.4): the session state is already committed 'active' above, so
+        // a throw here would reach the outer catch with no timers armed, no rooms
+        // routed, and no BOMB_INIT — a wedged round the status gate can't re-issue.
+        // A stale map only briefly shows last round's pages; the client also
+        // resets expertManualPositions on setBomb (the new-round BOMB_INIT).
+        try {
+          await deps.redis.del(manualPositionKey(sessionId));
+        } catch (delErr) {
+          deps.log.info({ delErr, sessionId }, 'stale manual-position clear skipped');
+        }
 
         // Route every roster socket into its team room (architecture
         // Pattern 1) so 8.4+ team-scoped broadcasts have a target.
@@ -2155,6 +2166,10 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
                 message: 'The facilitator removed you from the session.',
               });
               member.leave(sessionRoom(sessionId));
+              // Review 9.4: also leave the lounge — a kicked spectator/resting
+              // player would otherwise keep receiving the dual-targeted bomb
+              // stream (TIMER/MODULE_UPDATE/STRIKE/resolution) on a live socket.
+              member.leave(loungeRoom(sessionId));
             }
           }
         }
