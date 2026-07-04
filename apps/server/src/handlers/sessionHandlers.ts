@@ -49,6 +49,7 @@ import type { SessionArchiveRecord } from '../persistence/index.js';
 import { buildScoreboard } from '../round/buildScoreboard.js';
 import { isRelayComplete, pairIndexFor } from '../session/relayComplete.js';
 import { undersizedTeams } from '@bomb-squad/shared';
+import { isSessionFacilitator } from '@bomb-squad/shared';
 import { designateEqualisationVolunteer } from '../session/equalisationVolunteer.js';
 import { pauseSession, resumeSession, canResume, clearDisconnectedPlayer } from '../session/pauseSession.js';
 import { freezeRoundTimers, resumeRoundTimers } from '../timer/pauseTimers.js';
@@ -841,6 +842,13 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
         // Persist BEFORE emitting; on persist failure emit nothing but ERROR.
         await deps.redis.setJSON(sessionKey(sessionId), state);
         await deps.redis.setJSON(joinCodeKey(joinCode), sessionId);
+        // The stored `role` seeds only a LOBBY re-add (restoreReattachedSocket);
+        // it is NOT the authority source (Story 9.5: authority is the
+        // `facilitatorPlayerId` flag on SessionState, which survives any prune).
+        // A facilitator who opted onto a team then dropped+reattached in the lobby
+        // returns as teamless 'facilitator' and simply re-opts-in — accepted V1
+        // edge; their authority is never lost. Mid-round the roster is the role
+        // authority (no re-add), so a reattaching Facilitator-Defuser stays 'defuser'.
         await storeReattachRecord(deps.redis, sessionId, reattachToken, {
           playerId,
           displayName: 'Facilitator',
@@ -1050,7 +1058,7 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
 
         // Authority gate FIRST: a non-facilitator probe must learn nothing
         // about session contents (e.g. whether a playerId exists).
-        if (state.players[socket.data.playerId ?? '']?.role !== 'facilitator') {
+        if (!isSessionFacilitator(state, socket.data.playerId)) {
           socket.emit('ERROR', {
             code: 'NOT_FACILITATOR',
             message: 'Only the facilitator assigns teams.',
@@ -1068,14 +1076,12 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
           });
           return;
         }
-        if (target.role === 'facilitator') {
-          socket.emit('ERROR', {
-            code: 'INVALID_ASSIGNMENT',
-            message: "The facilitator doesn't sit on a team.",
-            recoverable: true,
-          });
-          return;
-        }
+        // Story 9.5: the Facilitator MAY be a TEAM_ASSIGN target — they can opt
+        // themselves (or be moved) onto a team with a play role. The old
+        // "facilitator doesn't sit on a team" refusal is gone; authority is the
+        // flag, not the role. The payload's `role` is still whitelisted to
+        // defuser/expert/spectator (parseTeamAssignPayload), so the mint-only
+        // 'facilitator' seat is never assignable.
 
         // EQUALISATION VOLUNTEER (Story 8.9, AC-2): TEAM_ASSIGN is REUSED to
         // designate the Facilitator's volunteer Defuser for an owed equalisation
@@ -1178,7 +1184,7 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
         }
 
         // Authority gate FIRST (a non-facilitator probe learns nothing).
-        if (state.players[socket.data.playerId ?? '']?.role !== 'facilitator') {
+        if (!isSessionFacilitator(state, socket.data.playerId)) {
           socket.emit('ERROR', {
             code: 'NOT_FACILITATOR',
             message: 'Only the facilitator opens preparation.',
@@ -1300,7 +1306,7 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
         }
 
         // Authority gate FIRST (a non-facilitator probe learns nothing, triggers no write).
-        if (state.players[socket.data.playerId ?? '']?.role !== 'facilitator') {
+        if (!isSessionFacilitator(state, socket.data.playerId)) {
           socket.emit('ERROR', {
             code: 'NOT_FACILITATOR',
             message: 'Only the facilitator ends the session.',
@@ -1418,7 +1424,7 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
         }
 
         // Authority gate FIRST (a non-facilitator probe learns nothing).
-        if (state.players[socket.data.playerId ?? '']?.role !== 'facilitator') {
+        if (!isSessionFacilitator(state, socket.data.playerId)) {
           socket.emit('ERROR', {
             code: 'NOT_FACILITATOR',
             message: 'Only the facilitator configures the round.',
@@ -1518,7 +1524,7 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
         }
 
         // Authority gate FIRST (a non-facilitator probe learns nothing).
-        if (state.players[socket.data.playerId ?? '']?.role !== 'facilitator') {
+        if (!isSessionFacilitator(state, socket.data.playerId)) {
           socket.emit('ERROR', {
             code: 'NOT_FACILITATOR',
             message: 'Only the facilitator cancels preparation.',
@@ -1580,7 +1586,7 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
         }
 
         // Authority gate FIRST.
-        if (state.players[socket.data.playerId ?? '']?.role !== 'facilitator') {
+        if (!isSessionFacilitator(state, socket.data.playerId)) {
           socket.emit('ERROR', {
             code: 'NOT_FACILITATOR',
             message: 'Only the facilitator starts the round.',
@@ -1870,7 +1876,7 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
 
         // Authority gate FIRST (a non-facilitator probe learns nothing — not even
         // whether the round failed). Resolve by durable playerId, never socket.id.
-        if (state.players[socket.data.playerId ?? '']?.role !== 'facilitator') {
+        if (!isSessionFacilitator(state, socket.data.playerId)) {
           socket.emit('ERROR', { code: 'NOT_FACILITATOR', message: 'Only the facilitator retries a round.', recoverable: true });
           return;
         }
@@ -1948,7 +1954,7 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
           return;
         }
         // Authority gate FIRST (a non-facilitator probe learns nothing).
-        if (state.players[socket.data.playerId ?? '']?.role !== 'facilitator') {
+        if (!isSessionFacilitator(state, socket.data.playerId)) {
           socket.emit('ERROR', { code: 'NOT_FACILITATOR', message: 'Only the facilitator pauses.', recoverable: true });
           return;
         }
@@ -1998,7 +2004,7 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
           return;
         }
         // Authority gate FIRST.
-        if (state.players[socket.data.playerId ?? '']?.role !== 'facilitator') {
+        if (!isSessionFacilitator(state, socket.data.playerId)) {
           socket.emit('ERROR', { code: 'NOT_FACILITATOR', message: 'Only the facilitator resumes.', recoverable: true });
           return;
         }
@@ -2068,7 +2074,7 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
         }
 
         // Authority: only the Facilitator may remove (resolved by durable id).
-        if (state.players[socket.data.playerId ?? '']?.role !== 'facilitator') {
+        if (!isSessionFacilitator(state, socket.data.playerId)) {
           socket.emit('ERROR', {
             code: 'NOT_FACILITATOR',
             message: 'Only the facilitator can remove players.',
@@ -2077,8 +2083,18 @@ export function registerSessionHandlers(io: SessionIOServer, deps: SessionHandle
           return;
         }
 
-        // Self-target + unknown-target guard (AC 2): no writes.
-        if (parsed.playerId === socket.data.playerId || state.players[parsed.playerId] === undefined) {
+        // Self-target + facilitator-target + unknown-target guard (AC 2; Story 9.5
+        // DD4): no writes. The explicit `facilitatorPlayerId` check keeps the
+        // session's sole authority-holder un-removable even after the flag/role
+        // split — a teamed Facilitator has a play role and a roster row, but must
+        // never be a removal target (would orphan session authority). Today the
+        // caller IS the facilitator so this coincides with the self-target guard,
+        // but the intent is now pinned independently of who asks.
+        if (
+          parsed.playerId === socket.data.playerId ||
+          isSessionFacilitator(state, parsed.playerId) ||
+          state.players[parsed.playerId] === undefined
+        ) {
           socket.emit('ERROR', {
             code: 'INVALID_REMOVAL',
             message: "You can't remove that player.",

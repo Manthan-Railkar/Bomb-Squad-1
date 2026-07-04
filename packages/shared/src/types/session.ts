@@ -166,4 +166,25 @@ export interface SessionState {
    * consumed by startRound" precedent; a retry sets it to the retrying team.
    */
   activeTeamId?: TeamId;
+  /**
+   * The durable player id (Story 2.7) that holds Facilitator session authority
+   * (Story 9.5, FR48). Set ONCE at SESSION_CREATE from the creating client's
+   * minted id and NEVER changed thereafter. This is the SOLE source of
+   * facilitator authority — every authority gate (TEAM_ASSIGN, PREPARATION_*,
+   * ROUND_*, FACILITATOR_PAUSE/RESUME, SESSION_END, PLAYER_REMOVE) keys on
+   * `playerId === facilitatorPlayerId`, NOT on `role`.
+   *
+   * ORTHOGONAL to `role`/`teamId`: when the Facilitator opts onto a team their
+   * roster `role` becomes a real play role (defuser/expert/spectator) and their
+   * `teamId` is set — exactly like any player — but their authority is unchanged
+   * because it lives here. Critically this survives the `startRound`
+   * role-reconciliation mint (`startRound.ts` overwrites a teamed player's role,
+   * which would otherwise destroy a `'facilitator'` role marker).
+   *
+   * Broadcast wholesale via `SESSION_STATE`, so the client gets it for free and
+   * derives `isSessionFacilitator` with the same shared helper (no new event).
+   * Optional in the type for backward-compat with pre-9.5 session snapshots; the
+   * helper is fail-closed (a missing field locks authority, never grants it).
+   */
+  facilitatorPlayerId?: string;
 }

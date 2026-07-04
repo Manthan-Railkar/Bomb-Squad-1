@@ -67,7 +67,14 @@ export function deriveDesiredScope(
   const isBombRoomParticipant =
     (self.role === 'defuser' || self.role === 'expert') && self.teamId !== undefined;
   const isSpectator = self.role === 'spectator';
-  if (!isBombRoomParticipant && !isSpectator) return null;
+  // Story 9.5: the TEAMLESS facilitator ('facilitator' role) is a real lounge
+  // member — the shared resolver grants them the Spectator Lounge (bidirectional,
+  // Story 3.7) / the lobby room in lobby phase, and 9.4/DD4 has them watching the
+  // lounge. Align the client with that instead of null-ing them (which used to
+  // tear their voice down). A TEAMED facilitator has a play role and is covered by
+  // the branches above; this only lifts the still-teamless host's exclusion.
+  const isFacilitator = self.role === 'facilitator';
+  if (!isBombRoomParticipant && !isSpectator && !isFacilitator) return null;
 
   try {
     const scope = resolveVoiceScope({
@@ -98,11 +105,12 @@ const DISCONNECT: VoiceAction = { type: 'disconnect' };
  * (collapsing rapid SESSION_STATE bursts to the newest target, not each one).
  *
  * - **`desired === null`** (a role this client's voice UI does not manage —
- *   facilitator / un-teamed / self removed from the roster): TEAR DOWN. Leaving a
- *   connected — possibly still-publishing — connection alive in a room the player
- *   no longer belongs to is exactly the stale-scope leak this story targets
- *   (Story 3.5 review, finding 1). Not reachable via `TEAM_ASSIGN` today, but the
- *   relay's active↔resting routing (3.7) and roster removal can reach it.
+ *   an un-teamed Bomb-Room role outside the lobby / self removed from the roster):
+ *   TEAR DOWN. Leaving a connected — possibly still-publishing — connection alive
+ *   in a room the player no longer belongs to is exactly the stale-scope leak this
+ *   story targets (Story 3.5 review, finding 1). The relay's active↔resting
+ *   routing (3.7) and roster removal can reach it. (Story 9.5: the facilitator is
+ *   NO LONGER null — they resolve to the lounge/lobby like any lounge member.)
  * - **`connected` with a resolvable desired scope**: re-mint (disconnect → fresh
  *   connect) only when the desired `{ room, publish }` actually DIFFERS from the
  *   connected one. Comparing the full tuple is what makes Defuser↔Expert on the

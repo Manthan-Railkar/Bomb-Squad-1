@@ -113,3 +113,48 @@ describe('ActiveRound — Model B active-team-first routing (Story 8.11)', () =>
     expect(screen.getByText(ROUND_IN_PROGRESS)).toBeInTheDocument();
   });
 });
+
+describe('ActiveRound — a TEAMED facilitator plays their role (Story 9.5)', () => {
+  /** The facilitator ('fac', the flag holder) opted onto a team with a play role. */
+  function seedTeamedFac(facRole: 'defuser' | 'expert', facTeam: 'A' | 'B') {
+    const session = makeSession({
+      status: 'active',
+      activeTeamId: 'A',
+      players: {
+        fac: makePlayer({ playerId: 'fac', displayName: 'Faci', role: facRole, teamId: facTeam }),
+        mate: makePlayer({
+          playerId: 'mate',
+          displayName: 'Mate',
+          role: facRole === 'defuser' ? 'expert' : 'defuser',
+          teamId: facTeam,
+        }),
+        // A minimal resting/active counterpart team so Model B has two teams.
+        other: makePlayer({ playerId: 'other', displayName: 'Otto', role: 'defuser', teamId: facTeam === 'A' ? 'B' : 'A' }),
+      },
+      teams: {
+        A: makeTeam('A', facTeam === 'A' ? ['fac', 'mate'] : ['other']),
+        B: makeTeam('B', facTeam === 'B' ? ['fac', 'mate'] : ['other']),
+      },
+    });
+    useGameStore.setState({ session, myPlayerId: 'fac' });
+  }
+
+  it('facilitator-Defuser on the ACTIVE team sees the bomb', () => {
+    seedTeamedFac('defuser', 'A');
+    render(<ActiveRound />);
+    expect(screen.getByTestId('bomb-stage')).toBeInTheDocument();
+  });
+
+  it('facilitator-Expert on the ACTIVE team sees the manual', () => {
+    seedTeamedFac('expert', 'A');
+    render(<ActiveRound />);
+    expect(screen.getByTestId('manual')).toBeInTheDocument();
+  });
+
+  it('facilitator on the RESTING team is routed to the lounge', () => {
+    seedTeamedFac('defuser', 'B');
+    render(<ActiveRound />);
+    expect(screen.getByTestId('spectator-lounge')).toBeInTheDocument();
+    expect(screen.queryByTestId('bomb-stage')).not.toBeInTheDocument();
+  });
+});

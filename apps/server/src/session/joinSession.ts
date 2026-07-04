@@ -16,7 +16,10 @@ export interface JoinPlayerArgs {
  * Idempotency guard: if the playerId is already in the roster, the state is
  * returned unchanged (same reference). This keeps a duplicate SESSION_JOIN a
  * no-op and — critically — means a facilitator re-joining their own session
- * can never demote their 'facilitator' role.
+ * can never demote their play role. (Story 9.5: facilitator AUTHORITY no longer
+ * depends on the 'facilitator' role marker at all — it lives in the
+ * `facilitatorPlayerId` flag — so even a role change here would not touch it;
+ * this guard now protects only the roster row's current play role.)
  *
  * No teamId is assigned here — team assignment is Story 2.4's TEAM_ASSIGN.
  */

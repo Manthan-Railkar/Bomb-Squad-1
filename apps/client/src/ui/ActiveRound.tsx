@@ -68,8 +68,11 @@ export default function ActiveRound() {
   const self = selfId !== null ? session.players[selfId] : undefined;
   const role = self?.role;
   // Resting players (their team is not the active team) are routed to standby for
-  // ALL roles — gate on activeTeamId BEFORE role. The facilitator (no teamId) is
-  // never "resting"; it falls through to its own placeholder below.
+  // ALL roles — gate on activeTeamId BEFORE role. Story 9.5: a TEAMED facilitator
+  // (they opted onto a team, so they have a teamId and a play role) IS "resting"
+  // when their team is benched and correctly falls into the lounge branch below.
+  // Only the still-TEAMLESS facilitator (no teamId, role 'facilitator') is never
+  // resting; it falls through to the spectator/facilitator lounge branch.
   const myTeamId = self?.teamId;
   const isResting = myTeamId !== undefined && myTeamId !== session.activeTeamId;
 

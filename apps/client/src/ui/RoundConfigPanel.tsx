@@ -2,6 +2,7 @@ import type { DifficultyTier, ModuleId, RoundConfig } from '@bomb-squad/shared';
 import { TIER_CATALOG, TIER_DEFAULTS, MODULE_GENERATORS } from '@bomb-squad/shared';
 import { useGameStore } from '../store/gameStore.js';
 import { getSocket } from '../net/socket.js';
+import { selectIsFacilitator } from './selectors.js';
 import {
   ROUND_CONFIG_TITLE,
   DIFFICULTY_LABEL,
@@ -91,7 +92,7 @@ export default function RoundConfigPanel() {
   const selfId = useGameStore((s) => s.myPlayerId);
 
   if (session === null) return null;
-  const isFacilitator = selfId !== null && session.players[selfId]?.role === 'facilitator';
+  const isFacilitator = selectIsFacilitator(session, selfId); // Story 9.5: flag, not role
   if (!isFacilitator) return null;
   if (session.status !== 'lobby' && session.status !== 'between-rounds') return null;
 

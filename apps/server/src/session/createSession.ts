@@ -56,6 +56,10 @@ export function createSessionState({
       modifiers: { ...DEFAULT_ROUND_CONFIG.modifiers, ...config?.modifiers },
     },
     players: { [facilitatorId]: facilitator },
+    // Story 9.5: the sole source of facilitator authority — set once here from the
+    // durable id, never changed, orthogonal to role/teamId (survives the startRound
+    // role mint). Every authority gate keys on this via isSessionFacilitator.
+    facilitatorPlayerId: facilitatorId,
     teams: {},
     roundNumber: 0,
     // Story 8.7: a fresh session is running, never paused.

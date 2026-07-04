@@ -152,6 +152,40 @@ describe('active-team scoping (Model B, Story 8.11)', () => {
   });
 });
 
+describe('Story 9.5 — a TEAMED facilitator is a counted participant (no resume deadlock)', () => {
+  // The facilitator opted onto active Team A as the Defuser (role minted to
+  // 'defuser'); Team A is playing. They are a normal teamId-keyed participant.
+  const facOnTeamA = (): SessionState => {
+    let state = createSessionState({ sessionId: 's', joinCode: 'ABC123', facilitatorId: 'fac' });
+    state = addPlayerToSession(state, { playerId: 'pat', displayName: 'Pat', role: 'expert' });
+    state = assignPlayerToTeam(state, { playerId: 'fac', teamId: 'A', role: 'defuser' });
+    state = assignPlayerToTeam(state, { playerId: 'pat', teamId: 'A', role: 'expert' });
+    const ready = Object.fromEntries(
+      Object.entries(state.players).map(([id, p]) => [id, { ...p, isReady: true }]),
+    );
+    return { ...state, status: 'active', roundNumber: 1, activeTeamId: 'A', players: ready };
+  };
+
+  it('a facilitator-Defuser disconnect records them and resets the active team (they gate resume)', () => {
+    const next = pauseSession(facOnTeamA(), { kind: 'disconnect', now: 1000, droppedPlayerId: 'fac' });
+    expect(next.pauseKind).toBe('disconnect');
+    expect(next.disconnectedPlayerIds).toEqual(['fac']);
+    expect(next.players['fac']!.isReady).toBe(false); // counted participant, reset
+    expect(next.players['pat']!.isReady).toBe(false);
+  });
+
+  it('resume needs the facilitator-Defuser back and ready — the old role-keyed deadlock is gone', () => {
+    let paused = pauseSession(facOnTeamA(), { kind: 'disconnect', now: 1000, droppedPlayerId: 'fac' });
+    expect(canResume(paused)).toBe(false); // facilitator + pat both reset
+    // Reconnect clears them from the dropped list; readiness still gates.
+    paused = clearDisconnectedPlayer(paused, 'fac');
+    paused = { ...paused, players: { ...paused.players, pat: { ...paused.players['pat']!, isReady: true } } };
+    expect(canResume(paused)).toBe(false); // facilitator still not ready
+    paused = { ...paused, players: { ...paused.players, fac: { ...paused.players['fac']!, isReady: true } } };
+    expect(canResume(paused)).toBe(true); // both active-team participants ready
+  });
+});
+
 describe('clearDisconnectedPlayer', () => {
   it('removes a reconnected player; same reference when absent', () => {
     const paused = pauseSession(activeState(), { kind: 'disconnect', now: 1000, droppedPlayerId: 'maya' });

@@ -16,13 +16,20 @@ function seed(opts: {
   status?: 'lobby' | 'between-rounds' | 'active';
   config?: Parameters<typeof makeRoundConfig>[0];
 } = {}) {
+  // Story 9.5: authority is the facilitatorPlayerId FLAG, not the role. The
+  // facilitator viewer is 'fac' (the flag holder, default in makeSession) and may
+  // carry any play role; a non-facilitator viewer is a DIFFERENT id ('p1').
   const role = opts.role ?? 'facilitator';
+  const isFac = role === 'facilitator';
   const session = makeSession({
     status: opts.status ?? 'lobby',
     config: makeRoundConfig(opts.config),
-    players: { fac: makePlayer({ playerId: 'fac', displayName: 'Faci', role }) },
+    players: {
+      fac: makePlayer({ playerId: 'fac', displayName: 'Faci', role: isFac ? 'facilitator' : 'defuser' }),
+      p1: makePlayer({ playerId: 'p1', displayName: 'Pat', role: 'defuser', teamId: 'A' }),
+    },
   });
-  useGameStore.setState({ session, myPlayerId: 'fac' });
+  useGameStore.setState({ session, myPlayerId: isFac ? 'fac' : 'p1' });
 }
 
 beforeEach(() => {
@@ -46,6 +53,19 @@ describe('RoundConfigPanel — visibility', () => {
 
   it('renders the panel for a facilitator in the lobby', () => {
     seed();
+    render(<RoundConfigPanel />);
+    expect(screen.getByRole('heading', { name: 'Round configuration' })).toBeInTheDocument();
+  });
+
+  it('Story 9.5: still renders for a TEAMED facilitator whose role is now a play role (flag, not role)', () => {
+    // Flag holder 'fac' with role 'defuser' — the authority is the flag.
+    const session = makeSession({
+      status: 'between-rounds',
+      players: {
+        fac: makePlayer({ playerId: 'fac', displayName: 'Faci', role: 'defuser', teamId: 'A' }),
+      },
+    });
+    useGameStore.setState({ session, myPlayerId: 'fac' });
     render(<RoundConfigPanel />);
     expect(screen.getByRole('heading', { name: 'Round configuration' })).toBeInTheDocument();
   });

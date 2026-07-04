@@ -61,6 +61,9 @@ export function makeSession(overrides: Partial<SessionState> = {}): SessionState
     pausedAt: null,
     pauseKind: null,
     disconnectedPlayerIds: [],
+    // Story 9.5: the authority flag. Defaults to the fixture's conventional
+    // facilitator id ('fac'); override for sessions with a differently-named host.
+    facilitatorPlayerId: 'fac',
     ...overrides,
   };
 }

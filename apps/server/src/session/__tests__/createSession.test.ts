@@ -28,7 +28,16 @@ describe('createSessionState', () => {
       pausedAt: null,
       pauseKind: null,
       disconnectedPlayerIds: [],
+      // Story 9.5: the authority flag, seeded once from the creating client's id.
+      facilitatorPlayerId: 'sock-42',
     });
+  });
+
+  it('Story 9.5: seeds facilitatorPlayerId from the creating client id (the authority flag)', () => {
+    const state = createSessionState(ARGS);
+    expect(state.facilitatorPlayerId).toBe('sock-42');
+    // Orthogonal to role: it is the durable id, matching the sole roster member.
+    expect(state.players['sock-42']?.role).toBe('facilitator');
   });
 
   it('applies sane first-round defaults (easy, 3 modules, 5:00, 25% speed-up)', () => {

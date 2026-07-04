@@ -84,12 +84,36 @@ describe('startRound (Model B — exactly one active team)', () => {
     expect(result.state.players['sock-maya']!.role).toBe('defuser');
   });
 
-  it('never touches the facilitator or off-team spectators', () => {
+  it('never touches the TEAMLESS facilitator or off-team spectators', () => {
     const result = startRound(prepState());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
+    // sock-fac has no teamId in lobbyWithTeams — the mint pass skips it.
     expect(result.state.players['sock-fac']!.role).toBe('facilitator');
     expect(result.state.players['sock-sam']!.role).toBe('spectator');
+  });
+
+  it('Story 9.5: a TEAMED facilitator at the active rotation index is minted Defuser (role marker overwritten; flag untouched)', () => {
+    // Opt the facilitator onto Team A at relayOrder index 0 so the round-1 natural
+    // pick IS the facilitator. The mint overwrites their 'facilitator' ROLE to
+    // 'defuser' — intended (role = play role) — while facilitatorPlayerId is
+    // untouched, so their session authority survives.
+    let state = createSessionState({ sessionId: 'sess-fac', joinCode: 'ABC123', facilitatorId: 'sock-fac' });
+    state = addPlayerToSession(state, { playerId: 'sock-pat', displayName: 'Pat', role: 'expert' });
+    state = addPlayerToSession(state, { playerId: 'sock-ana', displayName: 'Ana', role: 'expert' });
+    state = addPlayerToSession(state, { playerId: 'sock-bo', displayName: 'Bo', role: 'expert' });
+    state = assignPlayerToTeam(state, { playerId: 'sock-fac', teamId: 'A', role: 'defuser' });
+    state = assignPlayerToTeam(state, { playerId: 'sock-pat', teamId: 'A', role: 'expert' });
+    state = assignPlayerToTeam(state, { playerId: 'sock-ana', teamId: 'B', role: 'expert' });
+    state = assignPlayerToTeam(state, { playerId: 'sock-bo', teamId: 'B', role: 'expert' });
+    expect(state.teams.A?.relayOrder).toEqual(['sock-fac', 'sock-pat']);
+
+    const result = startRound(openPreparation(state));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.round.defusers.A).toBe('sock-fac');
+    expect(result.state.players['sock-fac']!.role).toBe('defuser'); // role marker overwritten
+    expect(result.state.facilitatorPlayerId).toBe('sock-fac'); // authority untouched
   });
 
   it('the RESTING team is absent from defusers and its stale defuser is demoted (AC-1)', () => {

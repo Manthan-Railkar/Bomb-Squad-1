@@ -82,7 +82,9 @@ async function makeHarness(opts?: {
   modifiers?: ModifierConfig;
   retry?: boolean;
   seedLifelines?: Record<string, number>;
+  roster?: Record<string, PlayerInfo>;
 }): Promise<Harness> {
+  const roster = opts?.roster ?? ROSTER;
   const store = createMemoryRedisStore();
   const emitted: Emitted[] = [];
   const memberEmits: MemberEmit[] = [];
@@ -99,7 +101,7 @@ async function makeHarness(opts?: {
     activeTeamId: 'A',
     roundNumber: ROUND_NUMBER,
     config: { ...base.config, modifiers: opts?.modifiers ?? MODIFIERS_ON },
-    players: ROSTER,
+    players: roster,
     teams: {
       A: {
         teamId: 'A',
@@ -126,7 +128,7 @@ async function makeHarness(opts?: {
 
   if (opts?.seedLifelines) await store.setJSON(lifelinesKey(SID), opts.seedLifelines);
 
-  const members = Object.keys(ROSTER).map((pid) => fakeMember(pid, memberEmits));
+  const members = Object.keys(roster).map((pid) => fakeMember(pid, memberEmits));
   return {
     deps: { redis: store, io: fakeIo(emitted, members), log: noopLog, timer: { cancel: () => {} } },
     store,
@@ -157,6 +159,31 @@ describe('resolveRound — lifeline grant (Story 9.2, AC-1/AC-4)', () => {
     expect(emits.find((e) => e.playerId === 'td')?.payload).toEqual({ count: 1 });
     expect(emits.some((e) => e.playerId === 'ad')).toBe(false);
     expect(emits.some((e) => e.playerId === 'fac')).toBe(false);
+  });
+
+  it('Story 9.5 (DD3): a TEAMED facilitator on the RESTING team EARNS like any resting player; a TEAMLESS facilitator still earns nothing', async () => {
+    // The facilitator opted onto Team B (the resting team this round) as an
+    // expert — role is now a play role, so the earner predicate (role !==
+    // 'facilitator' && teamId !== activeTeamId) grants them. `fac2`, still the
+    // teamless host, is excluded. Only the flag distinguishes authority; earning
+    // follows the play role.
+    const roster: Record<string, PlayerInfo> = {
+      ad: { playerId: 'ad', displayName: 'Ada', role: 'defuser', teamId: 'A', isReady: true },
+      // The session's facilitator (id 'fac', per makeHarness) opted onto resting Team B.
+      fac: { playerId: 'fac', displayName: 'Fin', role: 'expert', teamId: 'B', isReady: true },
+      // A second, teamless would-be host stand-in to prove the teamless exclusion still holds.
+      fac2: { playerId: 'fac2', displayName: 'Gwen', role: 'facilitator', isReady: true },
+    };
+    const h = await makeHarness({ roster });
+    await resolveRound(h.deps, SID, 'A', 'defused', 60_000);
+
+    // Teamed facilitator (Fin) earns; teamless host marker (Gwen) does not; active
+    // team defuser (Ada) does not.
+    expect(await loadLifelines(h)).toEqual({ fac: 1 });
+    const emits = tokenEmits(h);
+    expect(emits.find((e) => e.playerId === 'fac')?.payload).toEqual({ count: 1 });
+    expect(emits.some((e) => e.playerId === 'fac2')).toBe(false);
+    expect(emits.some((e) => e.playerId === 'ad')).toBe(false);
   });
 
   it('never places token counts on the SESSION_STATE broadcast (AC-3)', async () => {

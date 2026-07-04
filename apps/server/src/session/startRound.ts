@@ -36,7 +36,12 @@ export type StartRoundResult =
  * - The selected player becomes 'defuser' — even if currently 'spectator'.
  * - Any OTHER 'defuser' on EITHER team becomes 'expert' (incl. the whole resting
  *   team) so resting players are not stranded on a bomb surface.
- * - The facilitator and off-team players are never touched.
+ * - Off-team players (no `teamId`) are never touched — this includes the TEAMLESS
+ *   facilitator. Story 9.5: a facilitator who has OPTED ONTO a team DOES have a
+ *   `teamId`, so this pass reconciles their play `role` like any player (their
+ *   'facilitator' role marker is intentionally overwritten). Their session
+ *   authority is UNAFFECTED because it lives in `state.facilitatorPlayerId`, not
+ *   in `role` (see `isSessionFacilitator`).
  *
  * RETRY round (Story 8.8, FR14) — takes priority when `state.retryingTeamId` is
  * set. ONLY the retrying team is armed with the EXACT Defuser that played the

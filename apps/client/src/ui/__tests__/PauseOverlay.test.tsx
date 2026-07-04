@@ -14,6 +14,7 @@ import {
   PAUSE_WAITING_READY,
   PAUSE_READY_CTA,
   FACILITATOR_PAUSE_CTA,
+  FACILITATOR_PAUSE_CONFIRM_CTA,
 } from '../copy.js';
 
 let mock: MockSocket;
@@ -30,15 +31,40 @@ beforeEach(() => {
 });
 
 describe('PauseOverlay (Story 8.7)', () => {
-  it('not paused: the facilitator gets a break-glass Pause control; clicking emits FACILITATOR_PAUSE', async () => {
+  it('not paused: the facilitator gets a confirm-guarded break-glass Pause (arm→confirm emits once, Story 9.5 AC-3)', async () => {
     useGameStore.setState({
       session: makeSession({ status: 'active', players: players() }),
       myPlayerId: 'fac',
     });
     render(<PauseOverlay />);
+    const btn = screen.getByTestId('facilitator-pause');
+    // First click ARMS — no emit yet; label flips to the confirm CTA.
+    await userEvent.click(btn);
+    expect(mock.emit).not.toHaveBeenCalled();
+    expect(screen.getByTestId('facilitator-pause')).toHaveTextContent(FACILITATOR_PAUSE_CONFIRM_CTA);
+    // Second click CONFIRMS — emits exactly once and disarms back to the resting label.
     await userEvent.click(screen.getByTestId('facilitator-pause'));
     expect(mock.emit).toHaveBeenCalledWith('FACILITATOR_PAUSE');
+    expect(mock.emit).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('facilitator-pause')).toHaveTextContent(FACILITATOR_PAUSE_CTA);
+  });
+
+  it('Story 9.5 (AC-3): a teamed facilitator (role=defuser, flag-keyed) still gets the break-glass Pause', () => {
+    useGameStore.setState({
+      session: makeSession({
+        status: 'active',
+        players: {
+          // The host opted onto Team A as the Defuser — role is a play role now,
+          // but facilitatorPlayerId ('fac') keys their authority.
+          fac: makePlayer({ playerId: 'fac', displayName: 'Faci', role: 'defuser', teamId: 'A' }),
+          maya: makePlayer({ playerId: 'maya', displayName: 'Maya', role: 'expert', teamId: 'A' }),
+        },
+        activeTeamId: 'A',
+      }),
+      myPlayerId: 'fac',
+    });
+    render(<PauseOverlay />);
+    expect(screen.getByTestId('facilitator-pause')).toBeInTheDocument();
   });
 
   it('not paused: a non-facilitator sees nothing', () => {
@@ -81,6 +107,32 @@ describe('PauseOverlay (Story 8.7)', () => {
     expect(strip).toHaveTextContent('Maya');
     expect(screen.getByTestId('pause-resume')).toBeDisabled();
     expect(screen.getByText(PAUSE_WAITING_READY)).toBeInTheDocument();
+  });
+
+  it('Story 9.5: a TEAMED facilitator-participant gets BOTH a ready-up affordance and Resume during a disconnect pause (no deadlock)', async () => {
+    useGameStore.setState({
+      session: makeSession({
+        status: 'active',
+        pausedAt: 100,
+        pauseKind: 'disconnect',
+        activeTeamId: 'A',
+        disconnectedPlayerIds: [],
+        players: {
+          // The facilitator opted onto active Team A as the Defuser; the pause
+          // reset their readiness, so they must be able to ready-up themselves.
+          fac: makePlayer({ playerId: 'fac', displayName: 'Faci', role: 'defuser', teamId: 'A', isReady: false }),
+          maya: makePlayer({ playerId: 'maya', displayName: 'Maya', role: 'expert', teamId: 'A', isReady: true }),
+        },
+      }),
+      myPlayerId: 'fac',
+    });
+    render(<PauseOverlay />);
+    // Resume is present but disabled (the facilitator themselves is not ready).
+    expect(screen.getByTestId('pause-resume')).toBeDisabled();
+    // And a ready-up affordance exists so they can clear their own gate.
+    const ready = screen.getByTestId('pause-ready');
+    await userEvent.click(ready);
+    expect(mock.emit).toHaveBeenCalledWith('PLAYER_READY', { isReady: true });
   });
 
   it('disconnect pause: a not-ready participant gets an "I\'m ready" affordance → PLAYER_READY', async () => {

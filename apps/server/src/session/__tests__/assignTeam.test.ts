@@ -104,11 +104,20 @@ describe('assignPlayerToTeam', () => {
     );
   });
 
-  it('guards: targeting the facilitator returns the state reference unchanged', () => {
+  it('Story 9.5: assigns the facilitator onto a team like any player (teamId+role set, appended to relayOrder)', () => {
     const state = baseState();
     const next = assignPlayerToTeam(state, { playerId: 'sock-fac', teamId: 'A', role: 'defuser' });
-    expect(next).toBe(state);
-    expect(state.players['sock-fac'].role).toBe('facilitator');
+    expect(next).not.toBe(state);
+    expect(next.players['sock-fac']).toMatchObject({ teamId: 'A', role: 'defuser' });
+    expect(next.teams.A?.relayOrder).toEqual(['sock-fac']);
+    // Authority is orthogonal to role — the flag is untouched by an assignment.
+    expect(next.facilitatorPlayerId).toBe(state.facilitatorPlayerId);
+  });
+
+  it('Story 9.5: re-asserting the facilitator’s current team+role is an idempotent same-ref no-op', () => {
+    const first = assignPlayerToTeam(baseState(), { playerId: 'sock-fac', teamId: 'A', role: 'defuser' });
+    const again = assignPlayerToTeam(first, { playerId: 'sock-fac', teamId: 'A', role: 'defuser' });
+    expect(again).toBe(first);
   });
 
   it('is immutable: a deep-frozen input does not throw and is left unchanged', () => {

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ErrorPayload, PlayerInfo, PlayerRole, TeamId } from '@bomb-squad/shared';
-import { undersizedTeams } from '@bomb-squad/shared';
+import { undersizedTeams, isSessionFacilitator } from '@bomb-squad/shared';
 import { useGameStore } from '../store/gameStore.js';
+import { selectIsFacilitator } from './selectors.js';
 import { useVoiceStore } from '../store/voiceStore.js';
 import { getSocket } from '../net/socket.js';
 import Button from './Button.js';
@@ -20,6 +21,7 @@ import {
   COPIED,
   TEAM_ROSTER,
   YOU_TAG,
+  HOST_TAG,
   ROLE_FACILITATOR,
   ROLE_DEFUSER,
   ROLE_EXPERT,
@@ -79,11 +81,21 @@ const ASSIGN_ERROR_CODES: ReadonlySet<string> = new Set([
   'ROUND_CONFIGURE_FAILED',
 ]);
 
-/** Facilitator first, then by name — a stable order across roster broadcasts. */
-function sortRoster(players: Record<string, PlayerInfo>): PlayerInfo[] {
+/**
+ * Facilitator first, then by name — a stable order across roster broadcasts.
+ * Story 9.5: the host is identified by the durable-id FLAG, not the role (once
+ * they opt onto a team their role is a play role), so a teamed facilitator still
+ * sorts to the top.
+ */
+function sortRoster(
+  players: Record<string, PlayerInfo>,
+  facilitatorPlayerId: string | undefined,
+): PlayerInfo[] {
   return Object.values(players).sort((a, b) => {
-    if (a.role === 'facilitator' && b.role !== 'facilitator') return -1;
-    if (b.role === 'facilitator' && a.role !== 'facilitator') return 1;
+    const aFac = a.playerId === facilitatorPlayerId;
+    const bFac = b.playerId === facilitatorPlayerId;
+    if (aFac && !bFac) return -1;
+    if (bFac && !aFac) return 1;
     return a.displayName.localeCompare(b.displayName);
   });
 }
@@ -145,8 +157,8 @@ export default function Lobby() {
   if (session === null) return null;
 
   const link = buildShareLink(window.location.origin, session.joinCode);
-  const isFacilitator = selfId !== null && session.players[selfId]?.role === 'facilitator';
-  const roster = sortRoster(session.players);
+  const isFacilitator = selectIsFacilitator(session, selfId); // Story 9.5: flag, not role
+  const roster = sortRoster(session.players, session.facilitatorPlayerId);
 
   // Prep can only open once someone can defuse — at least one team must hold a
   // rostered player. Mirrors the server's hasPopulatedTeam guard so the button
@@ -230,7 +242,16 @@ export default function Lobby() {
           </p>
         ) : (
         <ul className="flex flex-col gap-3" data-testid="roster">
-          {roster.map((player) => (
+          {roster.map((player) => {
+            // Story 9.5: the host is the FLAG-holder (role may now be a play role).
+            const isFacilitatorRow = isSessionFacilitator(session, player.playerId);
+            // The <select>/chip assign role must be an ASSIGNABLE role; a still-
+            // 'facilitator' host row defaults to 'defuser' so opting in emits a
+            // valid TEAM_ASSIGN (the server whitelist rejects 'facilitator').
+            const rowAssignRole: PlayerRole = ASSIGNABLE_ROLES.includes(player.role)
+              ? player.role
+              : 'defuser';
+            return (
             <li
               key={player.playerId}
               className="flex items-center justify-between gap-4 rounded-md bg-surface px-4 py-3"
@@ -262,14 +283,27 @@ export default function Lobby() {
                 )}
               </span>
               <span className="flex items-center gap-2.5">
-                {player.role !== 'facilitator' && (
+                {/* Story 9.5: "Host" chip keyed on the facilitator FLAG (not role) —
+                    a teamed facilitator's role reads Defuser/Expert, so this keeps
+                    the session owner identifiable. */}
+                {isFacilitatorRow && (
+                  <span className="rounded-full border border-brass px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-brass">
+                    {HOST_TAG}
+                  </span>
+                )}
+                {(!isFacilitatorRow || player.teamId !== undefined) && (
                   // Team badge for every view — neutral ink only (LED colors are
-                  // reserved semantics; speaker-self is identity-only).
+                  // reserved semantics; speaker-self is identity-only). Hidden only
+                  // for the still-teamless facilitator (they sit on no team yet).
                   <span className="rounded-full border border-ink-muted px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-ink-muted">
                     {player.teamId !== undefined ? TEAM_LABELS[player.teamId] : UNASSIGNED}
                   </span>
                 )}
-                {isFacilitator && player.role !== 'facilitator' ? (
+                {isFacilitator ? (
+                  // Story 9.5: the facilitator manages every row INCLUDING their own —
+                  // team chips + role select on the host's row let them opt in and
+                  // re-role themselves like any player. Remove is hidden on the host's
+                  // own row (the server refuses removing the facilitator anyway, DD4).
                   <>
                     <span
                       className="flex gap-1"
@@ -281,7 +315,7 @@ export default function Lobby() {
                           key={teamId}
                           type="button"
                           aria-pressed={player.teamId === teamId}
-                          onClick={() => assign(player.playerId, teamId, player.role)}
+                          onClick={() => assign(player.playerId, teamId, rowAssignRole)}
                           className={`h-7 w-7 cursor-pointer rounded-md border-2 text-xs font-semibold transition-colors ${
                             player.teamId === teamId
                               ? 'border-brass text-ink-primary'
@@ -294,9 +328,11 @@ export default function Lobby() {
                     </span>
                     {/* Role changes need a team on the wire (TeamAssignPayload.teamId
                         is required) — mockup 6 likewise has no role select in the
-                        unassigned pool, so it stays disabled until a team is set. */}
+                        unassigned pool, so it stays disabled until a team is set.
+                        Value is sanitised to an ASSIGNABLE role so the still-'facilitator'
+                        host row never renders an out-of-list <select> value. */}
                     <select
-                      value={player.role}
+                      value={rowAssignRole}
                       disabled={player.teamId === undefined}
                       aria-label={`Role for ${player.displayName}`}
                       onChange={(event) => {
@@ -313,14 +349,17 @@ export default function Lobby() {
                       ))}
                     </select>
                     {/* Remove (Story 2.7): two-step confirm; server re-validates
-                        facilitator authority + rejects self-removal. */}
-                    <span aria-label={`Remove ${player.displayName}`}>
-                      <ConfirmButton
-                        label={REMOVE_PLAYER}
-                        confirmLabel={REMOVE_CONFIRM}
-                        onConfirm={() => remove(player.playerId)}
-                      />
-                    </span>
+                        facilitator authority + rejects self-removal. Hidden on the
+                        host's own row (Story 9.5 DD4). */}
+                    {!isFacilitatorRow && (
+                      <span aria-label={`Remove ${player.displayName}`}>
+                        <ConfirmButton
+                          label={REMOVE_PLAYER}
+                          confirmLabel={REMOVE_CONFIRM}
+                          onConfirm={() => remove(player.playerId)}
+                        />
+                      </span>
+                    )}
                   </>
                 ) : (
                   <span className="font-mono text-xs uppercase tracking-widest text-ink-muted">
@@ -354,7 +393,8 @@ export default function Lobby() {
                 )}
               </span>
             </li>
-          ))}
+            );
+          })}
         </ul>
         )}
       </section>

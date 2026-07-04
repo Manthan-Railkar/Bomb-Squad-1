@@ -18,7 +18,9 @@ import {
   deriveTemplateSeed,
   deriveTeamSeed,
   makeSeededRng,
+  isSessionFacilitator,
 } from '@bomb-squad/shared';
+import type { RoundConfig } from '@bomb-squad/shared';
 import { pairIndexFor } from '../../session/relayComplete.js';
 import {
   registerSessionHandlers,
@@ -910,19 +912,19 @@ describe('TEAM_ASSIGN handler', () => {
     expect(store.data.get(sessionKey(ack.sessionId))).toBe(storedBefore);
   });
 
-  it("targeting the facilitator → INVALID_ASSIGNMENT (they don't sit on a team)", async () => {
+  it('Story 9.5: the facilitator can opt THEMSELVES onto a team with a play role', async () => {
     const ack = await createSession(facilitator);
     const stateBefore = JSON.parse(store.data.get(sessionKey(ack.sessionId))!) as SessionState;
-    const facId = facilitatorIdOf(stateBefore);
+    const facId = stateBefore.facilitatorPlayerId!;
 
-    const errorPromise = nextEvent<ErrorPayload>(facilitator, 'ERROR');
+    const statePromise = nextEvent<SessionState>(facilitator, 'SESSION_STATE');
     facilitator.emit('TEAM_ASSIGN', { playerId: facId, teamId: 'A', role: 'defuser' });
-    const error = await errorPromise;
+    const state = await statePromise;
 
-    expect(error.code).toBe('INVALID_ASSIGNMENT');
-    expect(store.data.get(sessionKey(ack.sessionId))).toBe(
-      JSON.stringify(stateBefore),
-    );
+    // Play role + team are set; authority flag is UNCHANGED (still the facilitator).
+    expect(state.players[facId]).toMatchObject({ teamId: 'A', role: 'defuser' });
+    expect(state.teams.A?.relayOrder).toEqual([facId]);
+    expect(isSessionFacilitator(state, facId)).toBe(true);
   });
 
   it('non-lobby session → NOT_IN_LOBBY', async () => {
@@ -3879,5 +3881,245 @@ describe('ROUND_START — Asymmetric Expert Roles (Story 9.1)', () => {
     // stays full-access instead of re-restricting to the stale half.
     const round = JSON.parse(store.data.get(roundKey(sessionId, 1))!) as RoundState;
     expect(round.chapterAssignments).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Story 9.5 — facilitator authority is keyed on the durable-id flag
+// (state.facilitatorPlayerId), NOT on role === 'facilitator'. Once the
+// Facilitator opts onto a team their role becomes a real play role, but every
+// authority gate must still authorize them (flag on durable id), refuse a
+// non-facilitator, and FAIL CLOSED when the flag is missing.
+// ---------------------------------------------------------------------------
+describe('facilitator authority re-key: flag not role (Story 9.5, AC-1/AC-5)', () => {
+  let server: TestSocketServer;
+  let store: MemoryRedisStore;
+  let facilitator: TestClientSocket;
+  let joiner: TestClientSocket;
+
+  beforeEach(async () => {
+    store = createMemoryRedisStore();
+    server = await startTestSocketServer((io) =>
+      registerSessionHandlers(io, {
+        redis: store,
+        log: noopLog,
+        timer: createTestScheduler({ redis: store, io, log: noopLog }),
+        archive: fakeArchive,
+      }),
+    );
+    facilitator = await server.connectClient();
+    joiner = await server.connectClient();
+  });
+
+  afterEach(async () => {
+    await server.close();
+  });
+
+  const FULL_CONFIG: RoundConfig = {
+    difficulty: 'easy',
+    moduleCount: 3,
+    timerMs: 300_000,
+    strikeSpeedUpPct: 25,
+    modifiers: { asymmetricExpertRoles: false, spectatorLifelines: false },
+  };
+
+  /** Emit a client event chosen at runtime — the typed socket can't express a
+   * dynamic event name, so widen just at the call boundary. */
+  function emitDynamic(socket: TestClientSocket, event: string, payload?: unknown): void {
+    const emit = (socket as unknown as { emit: (e: string, ...a: unknown[]) => void }).emit.bind(
+      socket,
+    );
+    if (payload === undefined) emit(event);
+    else emit(event, payload);
+  }
+
+  /** Create a session + one joiner; return their durable ids and the sessionId. */
+  async function bootstrap(): Promise<{ sessionId: string; facId: string; joinerId: string }> {
+    const ack = await createSession(facilitator);
+    const joinerState = nextEvent<SessionState>(joiner, 'SESSION_STATE');
+    joiner.emit('SESSION_JOIN', { joinCode: ack.joinCode, displayName: 'Ada', role: 'expert' });
+    const state = await joinerState;
+    const facId = state.facilitatorPlayerId!;
+    const joinerId = Object.values(state.players).find((p) => p.displayName === 'Ada')!.playerId;
+    return { sessionId: ack.sessionId, facId, joinerId };
+  }
+
+  /**
+   * Seed a between-rounds state where the FACILITATOR has opted onto Team A as a
+   * real 'defuser' (the post-role-mint shape), plus Ada as an expert on Team A.
+   * `flagHolder` chooses who holds authority (facId | undefined = fail-closed).
+   */
+  function seededState(
+    sessionId: string,
+    facId: string,
+    joinerId: string,
+    flagHolder: string | undefined,
+  ): SessionState {
+    const teamA: TeamState = {
+      teamId: 'A',
+      relayOrder: [facId, joinerId],
+      currentDefuserIndex: 1,
+      cumulativeTimeMs: 1000,
+      roundTimesMs: [1000],
+      roundOutcomes: ['defused'],
+      equalisationRoundsPlayed: 0,
+    };
+    return {
+      sessionId,
+      joinCode: 'ABC123',
+      status: 'between-rounds',
+      config: FULL_CONFIG,
+      players: {
+        [facId]: { playerId: facId, displayName: 'Facilitator', role: 'defuser', teamId: 'A', isReady: false },
+        [joinerId]: { playerId: joinerId, displayName: 'Ada', role: 'expert', teamId: 'A', isReady: false },
+      },
+      teams: { A: teamA },
+      roundNumber: 1,
+      pausedAt: null,
+      pauseKind: null,
+      disconnectedPlayerIds: [],
+      facilitatorPlayerId: flagHolder,
+    };
+  }
+
+  /** Emit an event and resolve with the FIRST server reaction: an ERROR code or a broadcast. */
+  function reactionTo(
+    socket: TestClientSocket,
+    event: string,
+    payload?: unknown,
+  ): Promise<{ kind: 'error'; code: string } | { kind: 'state' }> {
+    return new Promise((resolve) => {
+      const onErr = (e: ErrorPayload): void => {
+        cleanup();
+        resolve({ kind: 'error', code: e.code });
+      };
+      const onState = (): void => {
+        cleanup();
+        resolve({ kind: 'state' });
+      };
+      function cleanup(): void {
+        socket.off('ERROR', onErr as never);
+        socket.off('SESSION_STATE', onState as never);
+      }
+      socket.on('ERROR', onErr as never);
+      socket.on('SESSION_STATE', onState as never);
+      emitDynamic(socket, event, payload);
+    });
+  }
+
+  // The 10 facilitator-only gates + a VALID payload so the payload-parse step
+  // (which precedes the authority gate for TEAM_ASSIGN/ROUND_CONFIGURE/
+  // PLAYER_REMOVE) never masks the NOT_FACILITATOR we are probing for.
+  function gates(joinerId: string): { event: string; payload?: unknown }[] {
+    return [
+      { event: 'TEAM_ASSIGN', payload: { playerId: joinerId, teamId: 'B', role: 'expert' } },
+      { event: 'PREPARATION_OPEN' },
+      { event: 'PREPARATION_CANCEL' },
+      { event: 'ROUND_CONFIGURE', payload: { config: FULL_CONFIG } },
+      { event: 'ROUND_START' },
+      { event: 'ROUND_RETRY', payload: { teamId: 'A' } },
+      { event: 'FACILITATOR_PAUSE' },
+      { event: 'FACILITATOR_RESUME' },
+      { event: 'PLAYER_REMOVE', payload: { playerId: joinerId } },
+      { event: 'SESSION_END' },
+    ];
+  }
+
+  /** Collect every NOT_FACILITATOR error a socket receives in a short window after an emit. */
+  function anyAuthorityRefusalWithin(
+    socket: TestClientSocket,
+    event: string,
+    payload: unknown,
+    windowMs = 120,
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      let refused = false;
+      const onErr = (e: ErrorPayload): void => {
+        if (e.code === 'NOT_FACILITATOR') refused = true;
+      };
+      socket.on('ERROR', onErr as never);
+      emitDynamic(socket, event, payload);
+      setTimeout(() => {
+        socket.off('ERROR', onErr as never);
+        resolve(refused);
+      }, windowMs);
+    });
+  }
+
+  it('a teamed Facilitator (role=defuser) is NEVER refused by the authority gate', async () => {
+    const { sessionId, facId, joinerId } = await bootstrap();
+    for (const gate of gates(joinerId)) {
+      await store.setJSON(sessionKey(sessionId), seededState(sessionId, facId, joinerId, facId));
+      // Past the gate a handler may succeed, fail downstream, or silently no-op —
+      // all fine; the flag-holder must NEVER see the authority refusal.
+      const refused = await anyAuthorityRefusalWithin(facilitator, gate.event, gate.payload);
+      expect({ gate: gate.event, refused }).toEqual({ gate: gate.event, refused: false });
+    }
+  });
+
+  it('a non-facilitator (Ada, role=expert) is refused NOT_FACILITATOR at every gate', async () => {
+    const { sessionId, facId, joinerId } = await bootstrap();
+    for (const gate of gates(joinerId)) {
+      await store.setJSON(sessionKey(sessionId), seededState(sessionId, facId, joinerId, facId));
+      const reaction = await reactionTo(joiner, gate.event, gate.payload);
+      expect({ gate: gate.event, ...reaction }).toEqual({
+        gate: gate.event,
+        kind: 'error',
+        code: 'NOT_FACILITATOR',
+      });
+    }
+  });
+
+  it('fail-closed: a session missing facilitatorPlayerId refuses even the facilitator socket', async () => {
+    const { sessionId, facId, joinerId } = await bootstrap();
+    for (const gate of gates(joinerId)) {
+      await store.setJSON(sessionKey(sessionId), seededState(sessionId, facId, joinerId, undefined));
+      const reaction = await reactionTo(facilitator, gate.event, gate.payload);
+      expect({ gate: gate.event, ...reaction }).toEqual({
+        gate: gate.event,
+        kind: 'error',
+        code: 'NOT_FACILITATOR',
+      });
+    }
+  });
+
+  it('authority keys on the DURABLE id: the facilitator socket keeps authority even with a play role', async () => {
+    // The facilitator socket's data.playerId is the durable id; role is 'defuser'
+    // in the seeded state. SESSION_END (an unambiguous authority action) succeeds,
+    // proving the gate resolved via the flag, not the role. This is the same
+    // property a mid-round reattach relies on (durable id survives the socket).
+    const { sessionId, facId, joinerId } = await bootstrap();
+    // Make the single-team relay COMPLETE so SESSION_END passes its phase gate —
+    // index === relayOrder.length, nothing owed (both players have defused).
+    const base = seededState(sessionId, facId, joinerId, facId);
+    const complete: SessionState = {
+      ...base,
+      roundNumber: 2,
+      teams: {
+        A: {
+          ...base.teams.A!,
+          currentDefuserIndex: 2,
+          cumulativeTimeMs: 2000,
+          roundTimesMs: [1000, 1000],
+          roundOutcomes: ['defused', 'defused'],
+        },
+      },
+    };
+    await store.setJSON(sessionKey(sessionId), complete);
+    const reaction = await reactionTo(facilitator, 'SESSION_END');
+    expect(reaction.kind).toBe('state');
+    const ended = JSON.parse(store.data.get(sessionKey(sessionId))!) as SessionState;
+    expect(ended.status).toBe('ended');
+    expect(isSessionFacilitator(ended, facId)).toBe(true);
+  });
+
+  it('PLAYER_REMOVE refuses the facilitator as target (DD4) even from the facilitator', async () => {
+    const { sessionId, facId, joinerId } = await bootstrap();
+    await store.setJSON(sessionKey(sessionId), seededState(sessionId, facId, joinerId, facId));
+    const reaction = await reactionTo(facilitator, 'PLAYER_REMOVE', { playerId: facId });
+    expect(reaction).toEqual({ kind: 'error', code: 'INVALID_REMOVAL' });
+    // Roster untouched — the facilitator is still present.
+    const after = JSON.parse(store.data.get(sessionKey(sessionId))!) as SessionState;
+    expect(after.players[facId]).toBeDefined();
   });
 });

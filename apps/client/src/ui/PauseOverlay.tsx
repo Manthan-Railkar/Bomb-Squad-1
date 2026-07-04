@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import type { PlayerInfo } from '@bomb-squad/shared';
 import { useGameStore } from '../store/gameStore.js';
 import { getSocket } from '../net/socket.js';
+import { selectIsFacilitator } from './selectors.js';
 import {
   PAUSE_HELD,
   PAUSE_DROPPED_PREFIX,
@@ -10,6 +12,7 @@ import {
   PAUSE_READY_CTA,
   PAUSE_READY_DONE,
   FACILITATOR_PAUSE_CTA,
+  FACILITATOR_PAUSE_CONFIRM_CTA,
 } from './copy.js';
 
 /**
@@ -36,26 +39,56 @@ function isParticipant(player: PlayerInfo | undefined): boolean {
 export default function PauseOverlay() {
   const session = useGameStore((s) => s.session);
   const selfId = useGameStore((s) => s.myPlayerId);
+  // Story 9.5 (AC-3): local arm→confirm state for the break-glass Pause. Purely
+  // presentational (never game state), so it stays in useState per the store
+  // discipline (Zustand holds server snapshots only).
+  const [pauseArmed, setPauseArmed] = useState(false);
 
   if (session === null) return null;
 
   const self = selfId !== null ? session.players[selfId] : undefined;
-  const isFacilitator = self?.role === 'facilitator';
+  // Story 9.5: authority is the durable-id flag, not role — a teamed facilitator
+  // (role now defuser/expert) still gets the break-glass pause on their surface.
+  const isFacilitator = selectIsFacilitator(session, selfId);
 
   // Not paused: the facilitator's "break-glass" Pause affordance (EXPERIENCE.md —
   // fades to low opacity until hovered). Only meaningful for a live round or the
   // between-rounds gap; everyone else sees nothing.
   if (session.pausedAt === null) {
     const canPause = session.status === 'active' || session.status === 'between-rounds';
-    if (!isFacilitator || !canPause) return null;
+    if (!isFacilitator || !canPause) {
+      // Ensure the control never lingers armed across a phase/authority change.
+      if (pauseArmed) setPauseArmed(false);
+      return null;
+    }
+    // AC-3 (DD1): confirm-guarded on the SAME break-glass button (single testid).
+    // First click ARMS (label flips to "Confirm pause", full opacity); second
+    // click emits. A stray single click can no longer detonate the round. Blur
+    // disarms so an armed control is never a resting state.
     return (
       <button
         type="button"
         data-testid="facilitator-pause"
-        onClick={() => getSocket().emit('FACILITATOR_PAUSE')}
-        className="absolute right-4 top-4 z-40 rounded border border-ink-muted/40 bg-surface-raised/80 px-3 py-1 font-mono text-xs uppercase tracking-widest text-ink-muted opacity-20 transition-opacity hover:opacity-100"
+        onClick={() => {
+          if (pauseArmed) {
+            getSocket().emit('FACILITATOR_PAUSE');
+            setPauseArmed(false);
+          } else {
+            setPauseArmed(true);
+          }
+        }}
+        onBlur={() => setPauseArmed(false)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') setPauseArmed(false);
+        }}
+        aria-pressed={pauseArmed}
+        className={`absolute right-4 top-4 z-40 rounded border px-3 py-1 font-mono text-xs uppercase tracking-widest transition-opacity ${
+          pauseArmed
+            ? 'border-brass bg-surface-raised text-ink-primary opacity-100'
+            : 'border-ink-muted/40 bg-surface-raised/80 text-ink-muted opacity-20 hover:opacity-100'
+        }`}
       >
-        {FACILITATOR_PAUSE_CTA}
+        {pauseArmed ? FACILITATOR_PAUSE_CONFIRM_CTA : FACILITATOR_PAUSE_CTA}
       </button>
     );
   }
@@ -79,10 +112,27 @@ export default function PauseOverlay() {
   // Resume is gated for a disconnect pause until all participants are ready.
   const resumeDisabled = isDisconnect && !allReady;
 
+  // Story 9.5: a TEAMED facilitator IS a participant, so a disconnect pause resets
+  // their readiness too. They must be able to ready-up (server canResume counts
+  // them) AND resume (authority) — without the ready button their own not-ready
+  // state would make Resume unreachable. Pre-9.5 the facilitator was always
+  // teamless, so `facilitatorNeedsReady` is simply false and the UI is unchanged.
+  const facilitatorNeedsReady = isDisconnect && isParticipant(self) && self?.isReady === false;
+
   let control: React.ReactNode;
   if (isFacilitator) {
     control = (
       <div className="flex items-center gap-3">
+        {facilitatorNeedsReady && (
+          <button
+            type="button"
+            data-testid="pause-ready"
+            onClick={readyUp}
+            className="rounded bg-ink-primary px-4 py-1.5 font-mono text-xs font-bold uppercase tracking-widest text-surface"
+          >
+            {PAUSE_READY_CTA}
+          </button>
+        )}
         {resumeDisabled && <span className="font-mono text-xs">{PAUSE_WAITING_READY}</span>}
         <button
           type="button"

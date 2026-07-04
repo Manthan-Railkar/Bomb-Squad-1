@@ -6,6 +6,7 @@ import { useUiStore } from '../store/uiStore.js';
 import { getSocket } from '../net/socket.js';
 import ConfirmButton from './ConfirmButton.js';
 import Button from './Button.js';
+import { selectIsFacilitator } from './selectors.js';
 import ManualViewer from '../manual/ManualViewer.js';
 import { buildChapters } from '../manual/chapters.js';
 import { MANUAL_MODULES } from '../modules/index.js';
@@ -89,8 +90,9 @@ export default function Preparation() {
   if (session === null) return null;
 
   // Durable playerId (Story 2.7) from the reactive store, not socket.id.
-  const self = selfId !== null ? session.players[selfId] : undefined;
-  const isFacilitator = self?.role === 'facilitator';
+  // Story 9.5: facilitator authority is the durable-id flag, not role — a teamed
+  // facilitator (play role) still gets the operator prep view to start the round.
+  const isFacilitator = selectIsFacilitator(session, selfId);
 
   // ACTIVE-TEAM-FIRST (Story 8.11, Model B): exactly one team plays this round.
   // The active team shows its upcoming Defuser (mirrors startRound's pick via

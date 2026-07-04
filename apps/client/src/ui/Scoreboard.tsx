@@ -7,6 +7,7 @@ import { formatTimerDisplay } from '../scenes/timerLcd.js';
 import ConfirmButton from './ConfirmButton.js';
 import Button from './Button.js';
 import PauseOverlay from './PauseOverlay.js';
+import { selectIsFacilitator } from './selectors.js';
 import {
   SCOREBOARD_EYEBROW,
   SCOREBOARD_HEADING,
@@ -112,8 +113,7 @@ export default function Scoreboard() {
 
   if (session === null) return null;
 
-  const self = selfId !== null ? session.players[selfId] : undefined;
-  const isFacilitator = self?.role === 'facilitator';
+  const isFacilitator = selectIsFacilitator(session, selfId); // Story 9.5: flag, not role
 
   const teams = TEAM_ORDER.map((id) => session.teams[id]).filter(
     (t): t is TeamState => t !== undefined,

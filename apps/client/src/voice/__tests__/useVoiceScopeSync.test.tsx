@@ -95,11 +95,13 @@ describe('useVoiceScopeSync', () => {
     expect(reconnectVoice).not.toHaveBeenCalled();
   });
 
-  it('connected → promoted to an unmanaged role (facilitator): tears the stale connection down', () => {
+  it('Story 9.5: a facilitator connected in a Bomb Room re-mints to the lounge (they are a lounge member, not unmanaged)', () => {
     setConnected('bomb-room:sess1:A', true);
     renderHook(() => useVoiceScopeSync(session('facilitator'), 'self'));
-    expect(reconnectVoice).not.toHaveBeenCalled();
-    expect(disconnectVoice).toHaveBeenCalledTimes(1);
+    // Desired resolves to the lounge now (not null), so the hook re-mints there
+    // rather than tearing the connection down.
+    expect(disconnectVoice).not.toHaveBeenCalled();
+    expect(reconnectVoice).toHaveBeenCalledWith({ publish: true });
   });
 
   it('connected → self removed from the roster: tears the stale publishing connection down', () => {

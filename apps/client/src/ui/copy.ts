@@ -32,6 +32,9 @@ export const OR_DIVIDER = 'or';
 export const TEAM_ROSTER = 'Team roster';
 export const YOU_TAG = 'You';
 export const ROLE_FACILITATOR = 'Facilitator';
+// Story 9.5: a teamed facilitator's role label reads Defuser/Expert, so a small
+// "Host" chip (keyed on the facilitatorPlayerId flag) keeps them identifiable.
+export const HOST_TAG = 'Host';
 
 // Facilitator player controls (Story 2.7) — secondary-confirm Remove on a row.
 export const REMOVE_PLAYER = 'Remove';
@@ -253,6 +256,9 @@ export const MODULE_POOL_COMING_SOON = 'coming soon';
 // facilitator pause is a "break-glass" hold; the disconnect pause is the amber
 // auto-pause naming who dropped. {name} is interpolated at render.
 export const FACILITATOR_PAUSE_CTA = 'Pause';
+// Story 9.5 (AC-3/DD1): the compact overlay's Pause is confirm-guarded (arm→confirm)
+// so a playing facilitator can't detonate the round with one stray click.
+export const FACILITATOR_PAUSE_CONFIRM_CTA = 'Confirm pause';
 export const PAUSE_RESUME_CTA = 'Resume';
 export const PAUSE_HELD = 'Holding the clock.';
 export const PAUSE_DROPPED_PREFIX = 'dropped — holding the clock.';

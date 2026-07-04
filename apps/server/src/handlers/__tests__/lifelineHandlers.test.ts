@@ -245,11 +245,36 @@ describe('LIFELINE_SEND handler', () => {
     expect(map).toEqual({ [mayaId]: 1 }); // active-team actor never spends
   });
 
-  it('the facilitator cannot spend → silent no-op', async () => {
+  it('the TEAMLESS facilitator cannot spend → silent no-op', async () => {
     await activeRound({ samTokens: 1 });
     const mayaToastSeen = eventWithin(maya, 'LIFELINE_TOAST', 200);
     facilitator.emit('LIFELINE_SEND', { promptId: VALID_PROMPT });
     expect(await mayaToastSeen).toBe(false);
+  });
+
+  it('Story 9.5 (DD3): a TEAMED facilitator on the RESTING team CAN spend (role is a play role)', async () => {
+    // The facilitator opted onto resting Team B with a play role — the spend
+    // gate excludes only `role === 'facilitator' || teamId === activeTeamId`, so
+    // a facilitator whose role is now 'spectator'/'expert' and who sits off the
+    // active team spends like any resting player. Seed that shape directly (same
+    // pattern as the resting-team-player test); the facilitator socket's
+    // data.playerId is the durable facilitator id.
+    const { sessionId } = await activeRound({ samTokens: 0 });
+    const state = (await store.getJSON<SessionState>(sessionKey(sessionId)))!;
+    const facId = state.facilitatorPlayerId!;
+    state.players[facId].role = 'spectator';
+    state.players[facId].teamId = 'B';
+    await store.setJSON(sessionKey(sessionId), state);
+    await store.setJSON(lifelinesKey(sessionId), { [facId]: 1 });
+
+    const mayaToast = nextEvent<LifelineToastPayload>(maya, 'LIFELINE_TOAST');
+    const facEcho = nextEvent<LifelineTokensPayload>(facilitator, 'LIFELINE_TOKENS');
+    facilitator.emit('LIFELINE_SEND', { promptId: VALID_PROMPT });
+
+    expect(await mayaToast).toEqual({ promptId: VALID_PROMPT, fromName: 'Facilitator' });
+    expect(await facEcho).toEqual({ count: 0 });
+    const map = await store.getJSON<Record<string, number>>(lifelinesKey(sessionId));
+    expect(map).toEqual({ [facId]: 0 }); // spent exactly one
   });
 
   it('modifier OFF → silent no-op even for an eligible token holder', async () => {

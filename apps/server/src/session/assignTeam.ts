@@ -34,15 +34,21 @@ export interface AssignTeamArgs {
  *   mutation), so it likewise never desynchronises the index.
  *
  * Guard clauses (defensive — the handler errors first, but pure functions
- * never trust): unknown playerId or a facilitator target returns the state
- * unchanged (same reference). Idempotency: re-asserting the player's current
- * teamId + role also returns the same reference, so a duplicate emit is a
- * structural no-op for the handler (no persist, no broadcast).
+ * never trust): an unknown playerId returns the state unchanged (same
+ * reference). Idempotency: re-asserting the player's current teamId + role also
+ * returns the same reference, so a duplicate emit is a structural no-op for the
+ * handler (no persist, no broadcast).
+ *
+ * Story 9.5: a Facilitator who opts onto a team is assigned like ANY player —
+ * there is no `role === 'facilitator'` refusal here anymore. Their play `role`
+ * (defuser/expert/spectator) is set and they are appended to `relayOrder`;
+ * session authority is unaffected because it lives in `state.facilitatorPlayerId`
+ * (see `isSessionFacilitator`), not in the roster role. The `role` argument is
+ * still handler-validated to never BE 'facilitator' (the seat is mint-only).
  */
 export function assignPlayerToTeam(state: SessionState, args: AssignTeamArgs): SessionState {
   const player = state.players[args.playerId];
   if (player === undefined) return state;
-  if (player.role === 'facilitator') return state;
   if (player.teamId === args.teamId && player.role === args.role) return state;
 
   const teams: Partial<Record<TeamId, TeamState>> = { ...state.teams };

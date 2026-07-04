@@ -37,8 +37,32 @@ describe('deriveDesiredScope', () => {
     });
   });
 
-  it('returns null for roles this voice UI does not manage (facilitator)', () => {
-    expect(deriveDesiredScope(self('facilitator'), 'active', SID, undefined)).toBeNull();
+  it('Story 9.5: the TEAMLESS facilitator resolves to the (bidirectional) lounge, not null', () => {
+    // Aligns the client with the shared resolver + 9.4/DD4 (the facilitator watches
+    // the lounge); pre-9.5 this null-ed and tore their voice down.
+    expect(deriveDesiredScope(self('facilitator'), 'active', SID, undefined)).toEqual({
+      room: 'spectator-lounge:sess1',
+      publish: true,
+    });
+  });
+
+  it('Story 9.5: the facilitator shares the lobby room in lobby phase (mic check)', () => {
+    expect(deriveDesiredScope(self('facilitator'), 'lobby', SID, undefined)).toEqual({
+      room: 'lobby:sess1',
+      publish: true,
+    });
+  });
+
+  it('Story 9.5: a TEAMED facilitator (play role) follows their role — active-team defuser → bomb room', () => {
+    expect(deriveDesiredScope(self('defuser', 'A'), 'active', SID, 'A')).toEqual({
+      room: 'bomb-room:sess1:A',
+      publish: true,
+    });
+    // Same facilitator resting next round → lounge (turn-flip re-mint).
+    expect(deriveDesiredScope(self('defuser', 'B'), 'active', SID, 'A')).toEqual({
+      room: 'spectator-lounge:sess1',
+      publish: true,
+    });
   });
 
   it('returns null for a teamless Bomb Room role outside the lobby (no resolvable scope)', () => {
